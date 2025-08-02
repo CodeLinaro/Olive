@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 
 # pylint: disable=useless-parent-delegation
 
+def sanitize_key(key: str) -> str:
+    return key.replace("/", "_").replace(":", "_")
 
 class OliveModelOutput(NamedTuple):
     preds: Any
@@ -137,6 +139,7 @@ class OliveEvaluator(ABC):
     def compute_accuracy(metric: Metric, model_outputs: Union[tuple, NamedTuple], targets: Any) -> MetricResult:
         """Compute accuracy metrics."""
         evaluate_backend_cls = MetricBackend.registry[metric.backend]
+        # import pdb;pdb.set_trace()
         return evaluate_backend_cls().measure(model_outputs, targets, metric)
 
     @staticmethod
@@ -191,7 +194,7 @@ class OliveEvaluator(ABC):
 class _OliveEvaluator(OliveEvaluator):
     @staticmethod
     def device_string_to_torch_device(device: Device):
-        return torch.device("cuda") if device == Device.GPU and torch.cuda.is_available() else torch.device("cpu")
+        return torch.device("cuda") if device == Device.GPU else torch.device(device)
 
     @classmethod
     def io_bind_enabled(cls, metric: Metric, inference_settings: dict) -> bool:
@@ -408,40 +411,72 @@ class OnnxEvaluator(_OliveEvaluator, OnnxEvaluatorMixin):
         )
         io_config = model.io_config
         run_kwargs = metric.get_run_kwargs()
-
         preds = []
+        preds_dict = collections.defaultdict(list)
         targets = []
+        targets_dict = collections.defaultdict(list)
         logits = []
         logits_dict = collections.defaultdict(list)
-        output_names = io_config["output_names"]
+        output_names = [name for name in io_config["output_names"]]
         is_single_tensor_output = len(output_names) == 1
+        if dataloader is None:
+            raise ValueError("Dataloader is None — check if get_dataloader returned properly.")
         for input_data, labels in dataloader:
+            # import pdb;pdb.set_trace()
+            # print(f"input data is : {input_data}")
             input_feed = format_data(input_data, io_config)
             result = model.run_session(session, input_feed, **run_kwargs)
+            # import pdb;pdb.set_trace()
             if is_single_tensor_output:
                 result = torch.Tensor(result[0])
             else:
                 # convert to dict of torch tensor
                 result = {name: torch.Tensor(result[i]) for i, name in enumerate(output_names)}
             outputs = post_func(result) if post_func else result
-            # keep as numpy or torch arrays
-            preds.append(outputs.cpu())
-            targets.append(labels.cpu())
-            if is_single_tensor_output:
-                logits.append(result.cpu())
+
+            if isinstance(outputs,torch.Tensor):   
+                # keep as numpy or torch arrays
+                preds.append(outputs.cpu())
+                preds_dict[output_names[0]].append(outputs.cpu()) 
+                if is_single_tensor_output:
+                    logits.append(result.cpu())
+                    logits_dict[output_names[0]].append(result.cpu())
+                else:
+                    for k in output_names:
+                        logits_dict[k].append(result[k].cpu())
             else:
                 for k in output_names:
-                    logits_dict[k].append(result[k].cpu())
-        preds = torch.cat(preds, dim=0)
-        targets = torch.cat(targets, dim=0)
+                    # sanitize_key(name)
+                    # print(k)
+                    # import pdb;pdb.set_trace()
+                    output_tensor=outputs[k].cpu()
+                    preds_dict[k].append(output_tensor)
+                    logits_dict[k].append(output_tensor)
+
+            if isinstance(labels,torch.Tensor):   
+                # keep as numpy or torch arrays
+                targets.append(labels.cpu())
+            else:
+                for k in output_names:
+                    # import pdb;pdb.set_trace()
+                    targets_dict[k].append(labels[k].cpu() if isinstance(labels, dict) else labels.cpu())   
+
+        # argets = torch.cat(targets, dim=0)
         if is_single_tensor_output:
-            logits = torch.cat(logits, dim=0)
+            targets = torch.cat(targets, dim=0)
+            preds = torch.cat(preds_dict[output_names[0]], dim=0)
+            logits = torch.cat(logits_dict[output_names[0]], dim=0)
         else:
+            # import pdb;pdb.set_trace()
+            targets = {k: torch.cat(targets_dict[k], dim=0) for k in output_names}
+            preds = {k: torch.cat(preds_dict[k], dim=0) for k in output_names}
             logits = {k: torch.cat(logits_dict[k], dim=0) for k in output_names}
+
 
         tuning_result_file = inference_settings.get("tuning_result_file")
         if tuning_result_file:
             dump_tuning_result(session.session, tuning_result_file)
+        # import pdb;pdb.set_trace()
         return OliveModelOutput(preds=preds, logits=logits), targets
 
     def _evaluate_onnx_accuracy(
@@ -713,7 +748,8 @@ class PyTorchEvaluator(_OliveEvaluator):
         logits = []
         device = _OliveEvaluator.device_string_to_torch_device(device)
         run_kwargs = metric.get_run_kwargs()
-        session.to(device)
+        if device:
+            session.to(device)
         for input_data_i, labels in dataloader:
             input_data = tensor_data_to_device(input_data_i, device)
             result = model.run_session(session, input_data, **run_kwargs)
@@ -775,15 +811,17 @@ class PyTorchEvaluator(_OliveEvaluator):
         torch_device = _OliveEvaluator.device_string_to_torch_device(device)
         run_kwargs = metric.get_run_kwargs()
 
-        session.to(torch_device)
-        input_data = tensor_data_to_device(input_data, torch_device)
+        is_cuda = device == Device.GPU
+        if is_cuda:
+            session.to(torch_device)
+            input_data = tensor_data_to_device(input_data, torch_device)
 
         # warm up
         for _ in range(warmup_num):
             model.run_session(session, input_data, **run_kwargs)
 
         latencies = []
-        if torch_device == torch.device("cuda"):
+        if is_cuda:
             # synchronize before starting the test
             torch.cuda.synchronize()
             # cuda events for measuring latency
@@ -1079,13 +1117,13 @@ class LMEvaluator(OliveEvaluator):
             else:
                 raise ValueError("Failed to automatically deduce model class. Provide it in user input!")
 
+        device = _OliveEvaluator.device_string_to_torch_device(device)
+        # device = torch.device("cuda:5")
         pretrained = None
         tokenizer = None
         if self.model_class == "hf":
             tokenizer = model.get_hf_tokenizer()
             pretrained = model.load_model().eval().to(device)
-            device = _OliveEvaluator.device_string_to_torch_device(device)
-
         elif self.model_class == "onnx":
             import onnxruntime_genai as og
 
@@ -1095,7 +1133,6 @@ class LMEvaluator(OliveEvaluator):
             model_path = model_path.parent if model_path.is_file() else model_path
             pretrained = og.Model(str(model_path))
             tokenizer = og.Tokenizer(pretrained)
-            device = None
 
         lmmodel = lm_eval.api.registry.get_model(self.model_class)(
             pretrained=pretrained,
