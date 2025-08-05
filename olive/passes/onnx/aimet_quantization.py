@@ -2,10 +2,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+import inspect
 import logging
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import onnx
 from packaging import version
@@ -57,6 +59,62 @@ def _has_quantization_nodes(model: onnx.ModelProto):
     return any(node.op_type in quantize_op_types for node in model.graph.node)
 
 
+class _AimetTechnique:
+    @staticmethod
+    def apply(sim, **kwargs):
+        raise NotImplementedError
+
+    @classmethod
+    def validate_args(cls, **kwargs):
+        signature = inspect.signature(cls.apply)
+        try:
+            signature.bind(None, **kwargs)
+            return True
+        except TypeError as e:
+            logger.warning("Unsupported arguments for technique %s:\n%s\n", cls.__qualname__, e)
+            return False
+
+
+SUPPORTED_TECHNIQUES: dict[str, _AimetTechnique] = {}
+
+
+def _register_technique(technique: _AimetTechnique):
+    """Decorate to register AIMET techniques."""
+    name = technique.__name__.lower()
+    if name in SUPPORTED_TECHNIQUES:
+        raise RuntimeError(f"{name} is already a registered technique.")
+    SUPPORTED_TECHNIQUES[name] = technique
+    return technique
+
+
+@_register_technique
+class LPBQ(_AimetTechnique):
+    @staticmethod
+    def apply(  # pylint: disable=arguments-differ
+        sim,
+        *,
+        op_types: Iterable[str] = ("Conv", "Gemm", "MatMul"),
+        bitwidth: int = 4,
+        decompressed_bw: int = 8,
+        block_size: int = 64,
+        strict: bool = False,
+        nodes_to_exclude: Optional[list[str]] = None,
+    ):
+        from aimet_onnx.quantsim import set_grouped_blockwise_quantization_for_weights
+
+        set_grouped_blockwise_quantization_for_weights(
+            sim,
+            op_types=op_types,
+            bitwidth=bitwidth,
+            decompressed_bw=decompressed_bw,
+            block_size=block_size,
+            strict=strict,
+            excluded_nodes=nodes_to_exclude,
+        )
+
+        return sim
+
+
 class AimetQuantization(Pass):
     """Quantize ONNX model using aimet-onnx."""
 
@@ -102,6 +160,12 @@ class AimetQuantization(Pass):
                     Default is None which uses [ "CPUExecutionProvider" ].
                 """,
             ),
+            "techniques": PassConfigParam(
+                type_=list[dict[str, Any]],
+                default_value=[],
+                required=False,
+                description="List of techniques to apply in order, each with its name and parameters",
+            ),
         }
         config.update(get_external_data_config())
         return config
@@ -126,6 +190,20 @@ class AimetQuantization(Pass):
         if config.quant_scheme not in ("min_max", "tf_enhanced"):
             logger.warning("Unsupported quant_scheme: %s", config.quant_scheme)
             return False
+
+        for technique in config.techniques:
+            if "name" not in technique:
+                logger.warning("Techniques must specify a name")
+                return False
+
+            name = technique["name"].lower()
+            technique_cls = SUPPORTED_TECHNIQUES.get(name)
+            if not technique_cls:
+                logger.warning("Unsupported technique: %s", name)
+                return False
+
+            if not technique_cls.validate_args(**{key: value for key, value in technique.items() if key != "name"}):
+                return False
 
         return True
 
@@ -157,7 +235,14 @@ class AimetQuantization(Pass):
         data_config = validate_config(config.data_config, DataConfig)
 
         # Note: bool(_CalibrationDataReader) is not implemented, convert to generator to avoid error
-        calib_dataloader = (x for x in data_config.to_data_container().create_calibration_dataloader())
+        calib_dataloader = (
+            x
+            for x in data_config.to_data_container().create_calibration_dataloader(
+                model_path=model.model_path,
+                io_config=model.io_config,
+                calibration_providers=config.calibration_providers,
+            )
+        )
 
         onnx_model = onnx.load(model.model_path)
 
@@ -174,6 +259,12 @@ class AimetQuantization(Pass):
                 providers=run_config.get("calibration_providers"),
                 path=tmp_dir,
             )
+
+            techniques = run_config["techniques"]
+            for technique in techniques:
+                name = technique.pop("name").lower()
+                sim = SUPPORTED_TECHNIQUES[name].apply(sim, **technique)
+
             sim.compute_encodings(calib_dataloader)
             qdq_model = sim.to_onnx_qdq()
 
