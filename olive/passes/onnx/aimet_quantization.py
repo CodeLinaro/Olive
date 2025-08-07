@@ -271,19 +271,28 @@ class AimetQuantization(Pass):
 
         onnx_model = onnx.load(model.model_path)
 
-        if _has_quantization_nodes(onnx_model):
-            raise NotImplementedError("AIMET Quantization does not support pre-quantized models")
-
         with tempfile.TemporaryDirectory(prefix="olive_tmp") as tmp_dir:
-            sim = aimet_onnx.QuantizationSimModel(
-                onnx_model,
-                param_type=param_type,
-                activation_type=act_type,
-                config_file=run_config.get("config_file"),
-                quant_scheme=run_config.get("quant_scheme", "min_max"),
-                providers=run_config.get("calibration_providers"),
-                path=tmp_dir,
-            )
+            if _has_quantization_nodes(onnx_model):
+                # pylint: disable = protected-access
+                sim = aimet_onnx.QuantizationSimModel._from_onnx_qdq(
+                    onnx_model,
+                    param_type=param_type,
+                    activation_type=act_type,
+                    config_file=run_config.get("config_file"),
+                    quant_scheme=run_config.get("quant_scheme", "min_max"),
+                    providers=run_config.get("calibration_providers"),
+                    path=tmp_dir,
+                )
+            else:
+                sim = aimet_onnx.QuantizationSimModel(
+                    onnx_model,
+                    param_type=param_type,
+                    activation_type=act_type,
+                    config_file=run_config.get("config_file"),
+                    quant_scheme=run_config.get("quant_scheme", "min_max"),
+                    providers=run_config.get("calibration_providers"),
+                    path=tmp_dir,
+                )
 
             op_types_to_exclude = run_config["op_types_to_exclude"]
             if op_types_to_exclude:
