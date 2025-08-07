@@ -60,9 +60,7 @@ class TestEvaluation:
                         "priority": 3,
                         "higher_is_better": True,
                         "goal": {"type": "max-degradation", "value": 0.01},
-                    },
-                    {"name": "test"},
-                    {"name": "test"},
+                    }
                 ],
             },
         ]
@@ -71,3 +69,48 @@ class TestEvaluation:
         for metric in metrics:
             assert metric.user_config, "user_config should not be None anytime"
             assert metric.name in ["accuracy", "hf_accuracy", "latency", "test"]
+
+    def test_cosine_similarity(self):
+        config = {
+            "name": "accuracy",
+            "type": "accuracy",
+            "sub_types": [{"name": "cosine_similarity", "priority": -1, "higher_is_better": True}],
+        }
+        metrics = OliveEvaluatorConfig(metrics=[config]).metrics
+        assert metrics[0].sub_types[0].name == "cosine_similarity"
+
+    def test_mse(self):
+        config = {
+            "name": "accuracy",
+            "type": "accuracy",
+            "sub_types": [{"name": "mse", "priority": 1, "higher_is_better": False}],
+        }
+        metrics = OliveEvaluatorConfig(metrics=[config]).metrics
+        assert metrics[0].sub_types[0].name == "mse"
+
+    def test_psnr(self):
+        config = {
+            "name": "accuracy",
+            "type": "accuracy",
+            "sub_types": [{"name": "psnr", "priority": -1, "higher_is_better": True}],
+        }
+        metrics = OliveEvaluatorConfig(metrics=[config]).metrics
+        assert metrics[0].sub_types[0].name == "psnr"
+
+    def test_sqnr(self):
+        config = {
+            "name": "accuracy",
+            "type": "accuracy",
+            "sub_types": [{"name": "sqnr", "priority": -1, "higher_is_better": True}],
+        }
+        metrics = OliveEvaluatorConfig(metrics=[config]).metrics
+        assert metrics[0].sub_types[0].name == "sqnr"
+
+    def test_l2_norm(self):
+        config = {
+            "name": "accuracy",
+            "type": "accuracy",
+            "sub_types": [{"name": "l2_norm", "priority": -1, "higher_is_better": False}],
+        }
+        metrics = OliveEvaluatorConfig(metrics=[config]).metrics
+        assert metrics[0].sub_types[0].name == "l2_norm"

@@ -7,7 +7,9 @@ from types import FunctionType
 from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
+import torch
 
 from olive.common.pydantic_v1 import ValidationError
 from olive.evaluator.metric import AccuracySubType, LatencySubType, ThroughputSubType
@@ -475,3 +477,100 @@ class TestOliveEvaluatorConfig:
             OliveEvaluatorConfig.from_json({"type": "test_evaluator"})
 
         registry_get_mock.assert_called_once_with("test_evaluator")
+
+
+# Models
+
+
+class SingleTensorOutputModel:
+    def run_session(self, session, input_feed, **kwargs):
+        return [torch.tensor([[1.0, 2.0], [3.0, 4.0]]).numpy()]
+
+
+class MultiTensorOutputModel:
+    def run_session(self, session, input_feed, **kwargs):
+        return {
+            "out1": torch.tensor([[1.0, 2.0], [3.0, 4.0]]).numpy(),
+            "out2": torch.tensor([[5.0, 6.0], [7.0, 8.0]]).numpy(),
+        }
+
+
+class UnexpectedOutputModel:
+    def run_session(self, session, input_feed, **kwargs):
+        return [torch.tensor([1.0, 2.0, 3.0]).numpy()]
+
+
+# Data Loaders
+
+
+class SimpleDataLoader:
+    def __iter__(self):
+        yield torch.zeros((2, 2)), torch.ones((2, 2))
+
+
+class MultiBatchDataLoader:
+    def __iter__(self):
+        for _ in range(3):
+            yield torch.zeros((2, 2)), torch.ones((2, 2))
+
+
+class DictLabelDataLoader:
+    def __iter__(self):
+        yield torch.zeros((2, 2)), {"out1": torch.ones((2, 2)), "out2": torch.full((2, 2), 2.0)}
+
+
+class EmptyDataLoader:
+    def __iter__(self):
+        return iter([])
+
+
+# Model Handler
+
+
+class ModelHandler:
+    def __init__(self, model, io_config):
+        self.model = model
+        self.io_config = io_config
+
+    def run_session(self, session, input_feed, **kwargs):
+        return self.model.run_session(session, input_feed, **kwargs)
+
+    def prepare_session(self, inference_settings, device, execution_providers):
+        class MockOnnxSession:
+            def __init__(self):
+                self.session = "mock_onnx_session"
+                self.get_providers = lambda: ["CPUExecutionProvider"]
+                self.get_inputs = list
+                self.get_outputs = list
+
+        return MockOnnxSession(), inference_settings
+
+
+# Test Helper
+
+
+def run_test_case(name, model, loader, check_fn):
+    handler = ModelHandler(model, io_config={})
+    session, _ = handler.prepare_session({}, "cpu", ["CPUExecutionProvider"])
+
+    data_iter = iter(loader)
+    try:
+        first = next(data_iter)
+    except StopIteration:
+        print(f"{name}: Data loader is empty and yielded no data.")
+        return
+
+    inputs, labels = first
+    outputs = handler.run_session(session, inputs)
+
+    if isinstance(outputs, dict):
+        assert all(isinstance(v, np.ndarray) for v in outputs.values()), (
+            f"{name}: Dict output values are not numpy arrays."
+        )
+    elif isinstance(outputs, list):
+        assert all(isinstance(o, np.ndarray) for o in outputs), f"{name}: List output is not all numpy arrays."
+    else:
+        raise AssertionError(f"{name}: Output is neither list nor dict. Got: {outputs}")
+
+    assert check_fn(outputs, labels), f"{name}: Output and label check failed.\nOutput: {outputs}\nLabels: {labels}"
+    print(f"{name}: Passed")

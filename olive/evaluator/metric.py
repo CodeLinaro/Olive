@@ -31,6 +31,12 @@ class AccuracySubType(StrEnumBase):
     AUROC = "auroc"
     PERPLEXITY = "perplexity"
 
+    COSINE_SIMILARITY = "cosine_similarity"
+    MEAN_SQUARED_ERROR = "mse"
+    PEAK_SIGNAL_NOISE_RATIO = "psnr"
+    SIGNAL_NOISE_RATIO = "sqnr"
+    L2_NORM = "l2_norm"
+
 
 class LatencySubType(StrEnumBase):
     # unit: millisecond

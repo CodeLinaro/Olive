@@ -26,6 +26,11 @@ class AccuracyBase(AutoConfigClass):
         "recall": torchmetrics.Recall,
         "auroc": torchmetrics.AUROC,
         "perplexity": torchmetrics.text.perplexity.Perplexity,
+        "cosine_similarity": torchmetrics.functional.cosine_similarity,
+        "mse": torchmetrics.functional.mean_squared_error,
+        "psnr": torchmetrics.functional.peak_signal_noise_ratio,
+        "sqnr": torchmetrics.functional.signal_noise_ratio,
+        "l2_norm": torchmetrics.functional.mean_squared_error,
     }
 
     def __init__(self, config: Union[ConfigBase, dict[str, Any]] = None) -> None:
@@ -70,8 +75,22 @@ class AccuracyBase(AutoConfigClass):
     def prepare_tensors(preds, target, dtypes=torch.int):
         dtypes = dtypes if isinstance(dtypes, (list, tuple)) else [dtypes, dtypes]
         assert len(dtypes) == 2, "dtypes should be a list or tuple with two elements."
-        preds = torch.tensor(preds, dtype=dtypes[0]) if not isinstance(preds, torch.Tensor) else preds.to(dtypes[0])
-        target = torch.tensor(target, dtype=dtypes[1]) if not isinstance(target, torch.Tensor) else target.to(dtypes[1])
+        if isinstance(preds, dict):
+            preds = {
+                k: torch.tensor(v, dtype=dtypes[0]) if not isinstance(v, torch.Tensor) else v.to(dtypes[0])
+                for k, v in preds.items()
+            }
+        else:
+            preds = torch.tensor(preds, dtype=dtypes[0]) if not isinstance(preds, torch.Tensor) else preds.to(dtypes[0])
+        if isinstance(target, dict):
+            target = {
+                k: torch.tensor(v, dtype=dtypes[1]) if not isinstance(v, torch.Tensor) else v.to(dtypes[1])
+                for k, v in target.items()
+            }
+        else:
+            target = (
+                torch.tensor(target, dtype=dtypes[1]) if not isinstance(target, torch.Tensor) else target.to(dtypes[1])
+            )
         return preds, target
 
     @abstractmethod
@@ -157,3 +176,120 @@ class Perplexity(AccuracyBase):
             perplexity.update(logits, targets)
         result = perplexity.compute()
         return result.item()
+
+
+class CosineSimilarity(AccuracyBase):
+    name: str = "cosine_similarity"
+
+    def measure(self, model_output, target):
+        preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target, dtypes=torch.float)
+
+        if isinstance(preds_tensor, dict):
+            return {key: self._compute_mean_similarity(preds_tensor[key], target_tensor[key]) for key in preds_tensor}
+        else:
+            return self._compute_mean_similarity(preds_tensor, target_tensor)
+
+    def _compute_mean_similarity(self, preds, targets):
+        if preds.shape[0] != targets.shape[0]:
+            raise ValueError(f"Batch size mismatch: preds {preds.shape}, targets {targets.shape}")
+
+        preds_flat = preds.view(preds.shape[0], -1)
+        targets_flat = targets.view(targets.shape[0], -1)
+
+        similarities = torch.nn.functional.cosine_similarity(preds_flat, targets_flat, dim=1)
+
+        return {"avg": similarities.mean().item(), "min": similarities.min().item(), "max": similarities.max().item()}
+
+
+class MSE(AccuracyBase):
+    name: str = "mse"
+
+    def measure(self, model_output, target):
+        preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target, dtypes=torch.float)
+
+        if isinstance(preds_tensor, dict):
+            return {key: self._compute_mean_mse(preds_tensor[key], target_tensor[key]) for key in preds_tensor}
+        else:
+            return self._compute_mean_mse(preds_tensor, target_tensor)
+
+    def _compute_mean_mse(self, preds, targets):
+        if preds.shape[0] != targets.shape[0]:
+            raise ValueError(f"Batch size mismatch: preds {preds.shape}, targets {targets.shape}")
+        preds_flat = preds.view(preds.shape[0], -1)
+        targets_flat = targets.view(targets.shape[0], -1)
+
+        mse = torch.mean((preds_flat - targets_flat) ** 2, dim=1)
+
+        return {"avg": mse.mean().item(), "min": mse.min().item(), "max": mse.max().item()}
+
+
+class PSNR(AccuracyBase):
+    name: str = "psnr"
+
+    def measure(self, model_output, target):
+        preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target, dtypes=torch.float)
+
+        if isinstance(preds_tensor, dict):
+            return {key: self._compute_mean_psnr(preds_tensor[key], target_tensor[key]) for key in preds_tensor}
+        else:
+            return self._compute_mean_psnr(preds_tensor, target_tensor)
+
+    def _compute_mean_psnr(self, preds, targets):
+        if preds.shape[0] != targets.shape[0]:
+            raise ValueError(f"Batch size mismatch: preds {preds.shape}, targets {targets.shape}")
+        preds_flat = preds.view(preds.shape[0], -1)
+        targets_flat = targets.view(targets.shape[0], -1)
+
+        mse = torch.mean((preds_flat - targets_flat) ** 2, dim=1)
+        epsilon = 1e-7
+        max_pixel = torch.max(targets_flat, dim=1).values.clamp(min=epsilon)
+        psnr = 20 * torch.log10(max_pixel) - 10 * torch.log10(mse + epsilon)
+
+        return {"avg": psnr.mean().item(), "min": psnr.min().item(), "max": psnr.max().item()}
+
+
+class SQNR(AccuracyBase):
+    name: str = "sqnr"
+
+    def measure(self, model_output, target):
+        preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target, dtypes=torch.float)
+
+        if isinstance(preds_tensor, dict):
+            return {key: self._compute_mean_sqnr(preds_tensor[key], target_tensor[key]) for key in preds_tensor}
+        else:
+            return self._compute_mean_sqnr(preds_tensor, target_tensor)
+
+    def _compute_mean_sqnr(self, preds, targets):
+        if preds.shape[0] != targets.shape[0]:
+            raise ValueError(f"Batch size mismatch: preds {preds.shape}, targets {targets.shape}")
+        preds_flat = preds.view(preds.shape[0], -1)
+        targets_flat = targets.view(targets.shape[0], -1)
+
+        epsilon = torch.finfo(torch.float32).eps
+        signal_power = torch.norm(targets_flat, dim=1).clamp(min=epsilon)
+        noise_power = torch.norm(targets_flat - preds_flat, dim=1).clamp(min=epsilon)
+        sqnr = 10 * torch.log10(signal_power / noise_power)
+
+        return {"avg": sqnr.mean().item(), "min": sqnr.min().item(), "max": sqnr.max().item()}
+
+
+class L2Norm(AccuracyBase):
+    name: str = "l2_norm"
+
+    def measure(self, model_output, target):
+        preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target, dtypes=torch.float)
+
+        if isinstance(preds_tensor, dict):
+            return {key: self._compute_mean_l2(preds_tensor[key], target_tensor[key]) for key in preds_tensor}
+        else:
+            return self._compute_mean_l2(preds_tensor, target_tensor)
+
+    def _compute_mean_l2(self, preds, targets):
+        if preds.shape[0] != targets.shape[0]:
+            raise ValueError(f"Batch size mismatch: preds {preds.shape}, targets {targets.shape}")
+        preds_flat = preds.view(preds.shape[0], -1)
+        targets_flat = targets.view(targets.shape[0], -1)
+
+        l2 = torch.norm(preds_flat - targets_flat, p=2, dim=1)
+
+        return {"avg": l2.mean().item(), "min": l2.min().item(), "max": l2.max().item()}
