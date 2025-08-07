@@ -59,6 +59,24 @@ def _has_quantization_nodes(model: onnx.ModelProto):
     return any(node.op_type in quantize_op_types for node in model.graph.node)
 
 
+def _disable_quantizer(sim, tensor_name: str):
+    quantizer = sim.qc_quantize_op_dict.get(tensor_name)
+    if quantizer and not quantizer.is_encoding_frozen():
+        quantizer.enabled = False
+
+
+def _exclude_op_types(sim, op_types_to_exclude: list[str]):
+    """Excludes tensors from quantization if they are inputs/outputs only to nodes with op_type in op_types_to_exclude."""
+    for product in sim.connected_graph.get_all_products().values():
+        if product.producer and product.producer.type not in op_types_to_exclude:
+            continue
+
+        if any(consumer.type not in op_types_to_exclude for consumer in product.consumers):
+            continue
+
+        _disable_quantizer(sim, product.name)
+
+
 class _AimetTechnique:
     @staticmethod
     def apply(sim, **kwargs):
@@ -166,6 +184,13 @@ class AimetQuantization(Pass):
                 required=False,
                 description="List of techniques to apply in order, each with its name and parameters",
             ),
+            "op_types_to_exclude": PassConfigParam(
+                type_=list[str],
+                default_value=None,
+                description="""
+                    List of operator types to exclude from quantization.
+                """,
+            ),
         }
         config.update(get_external_data_config())
         return config
@@ -259,6 +284,10 @@ class AimetQuantization(Pass):
                 providers=run_config.get("calibration_providers"),
                 path=tmp_dir,
             )
+
+            op_types_to_exclude = run_config["op_types_to_exclude"]
+            if op_types_to_exclude:
+                _exclude_op_types(sim, op_types_to_exclude)
 
             techniques = run_config["techniques"]
             for technique in techniques:
