@@ -157,7 +157,7 @@ def test_aimet_quantization_uses_provided_precisions(tmp_path, precisions):
     }
 
     # Weight should be symmetrically quantized with precision type
-    weight_quantizer = tensor_to_quantizer["weight"]
+    weight_quantizer = next(iter(q for name, q in tensor_to_quantizer.items() if "weight" in name))
     weight_offset = onnx.numpy_helper.to_array(initializer_dict[weight_quantizer.input[2]])
     assert np.all(weight_offset == 0)
     # Note: int4 weights are packed into int8 data type
@@ -285,7 +285,7 @@ def test_aimet_quantization_excludes_op_types(tmp_path, op_types, disabled_quant
     }
 
     for tensor_name in ("weight", "input", "matmul_out", "output_q"):
-        assert (tensor_name in disabled_quantizers) == (tensor_name not in tensor_to_quantizer)
+        assert (tensor_name in disabled_quantizers) == (not any(tensor_name in key for key in tensor_to_quantizer))
 
 
 @pytest.mark.skipif(not IS_LINUX, reason="Only run on linux")
@@ -311,7 +311,7 @@ def test_aimet_quantization_preserves_quantizers_with_prequantized_model(tmp_pat
         node.input[0]: node for node in model.graph.node if node.op_type in ("QuantizeLinear", "DequantizeLinear")
     }
 
-    weight_quantizer = tensor_to_quantizer["weight_dq"]
+    weight_quantizer = next(iter(q for name, q in tensor_to_quantizer.items() if "weight" in name))
     weight_scale = [t for t in model.graph.initializer if t.name == weight_quantizer.input[1]]
     weight_scale = onnx.numpy_helper.to_array(weight_scale[0])
     assert weight_scale == np.array(0.1).astype(np.float32)

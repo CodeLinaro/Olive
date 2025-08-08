@@ -304,6 +304,7 @@ class AimetQuantization(Pass):
                 sim = SUPPORTED_TECHNIQUES[name].apply(sim, **technique)
 
             sim.compute_encodings(calib_dataloader)
-            qdq_model = sim.to_onnx_qdq()
+            # pylint: disable = protected-access
+            qdq_model = sim._to_onnx_qdq(prequantize_constants=True)
 
         return model_proto_to_olive_model(qdq_model, output_model_path, config)
