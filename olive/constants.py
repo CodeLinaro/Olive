@@ -13,6 +13,7 @@ class Framework(StrEnumBase):
 
     ONNX = "ONNX"
     PYTORCH = "PyTorch"
+    QAIRT = "QAIRT"
     QNN = "QNN"
     TENSORFLOW = "TensorFlow"
     OPENVINO = "OpenVINO"
@@ -28,6 +29,7 @@ class ModelFileFormat(StrEnumBase):
     PYTORCH_SLICE_GPT_MODEL = "PyTorch.SliceGPT"
     TENSORFLOW_PROTOBUF = "TensorFlow.Protobuf"
     TENSORFLOW_SAVED_MODEL = "TensorFlow.SavedModel"
+    QAIRT_MODEL = "QAIRT.MODEL"
     QNN_CPP = "QNN.CPP"
     QNN_LIB = "QNN.LIB"
     QNN_SERIALIZED_BIN = "QNN.SERIALIZED.BIN"
