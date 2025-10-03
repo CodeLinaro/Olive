@@ -15,7 +15,7 @@ from olive.model.handler.base import OliveModelHandler
 logger = logging.getLogger(__name__)
 
 
-@model_handler_registry("QNNModel")
+@model_handler_registry("QairtModel")
 class QairtModelHandler(OliveModelHandler):
     json_config_keys: tuple[str, ...] = ("io_config", "model_file_format")
 
