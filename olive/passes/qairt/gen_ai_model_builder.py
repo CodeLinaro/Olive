@@ -50,15 +50,15 @@ class QairtGenAIModelBuilder(Pass):
 
         # Validate QAIRT BE type
         from qairt.api.configs.common import BackendType
-
-        qairt_backend = config.backend
-        if qairt_backend not in BackendType:
+ 
+        valid_backends = [backend.value for backend in BackendType]
+        if config.backend not in valid_backends:
             raise ValueError(
-                f"{qairt_backend} is not a valid QAIRT backend type. Valid backends: {[backend for backend in BackendType]}"
+                f"{config.backend} is not a valid QAIRT backend type. Valid backends: {valid_backends}"
             )
 
         # TODO - Verify this is correct validation
-        if qairt_backend != BackendType.HTP and config.soc_details is not None:
+        if config.backend != BackendType.HTP and config.soc_details is not None:
             raise ValueError("soc_details is not supported for backends other than HTP")
 
         # Import relevant GenAI APIs
