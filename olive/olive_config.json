@@ -465,6 +465,15 @@
             "supported_algorithms": [  ],
             "supported_quantization_encodings": [  ]
         },
+        "QairtPipeline": {
+            "module_path": "olive.passes.qairt.pipeline.QairtPipeline",
+            "supported_providers": [ "QNNExecutionProvider" ],
+            "supported_accelerators": [ "npu" ],
+            "supported_precisions": [ "*" ],
+            "supported_algorithms": [  ],
+            "supported_quantization_encodings": [  ],
+            "extra_dependencies": [ "qairt-dev" ]
+        },
         "QairtMHA2SHA": {
             "module_path": "olive.passes.onnx.qairt.mha2sha.QairtMHA2SHA",
             "supported_providers": [ "QNNExecutionProvider" ],
