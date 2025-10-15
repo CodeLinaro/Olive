@@ -21,7 +21,7 @@ __all__ = [
     "OliveModelHandler",
     "OpenVINOModelHandler",
     "PyTorchModelHandler",
-    "QairtModelHandler",
     "QNNModelHandler",
+    "QairtModelHandler",
     "TensorFlowModelHandler",
 ]
