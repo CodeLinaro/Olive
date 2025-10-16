@@ -31,7 +31,9 @@ class QairtPipeline(Pass):
                 default_value="CPU",
                 description="Target accelerator to prepare for. Accepted values are 'CPU' and 'HTP'.",
             ),
-            "soc_details": PassConfigParam(type_=str, default_value=None, description=""),
+            "soc_details": PassConfigParam(
+                type_=list[str], default_value=None, description="List of compilation targets, e.g., ['chipset:SM8750']"
+            ),
         }
 
     def _run_for_config(
@@ -68,7 +70,9 @@ class QairtPipeline(Pass):
             model_wrapper = ModelWrapper.from_model(pytorch_model)
             model_wrapper.save_model(temp_dir)
 
-            pipeline_config = PipelineGenAIConfig(model_path=temp_dir, backend=config.backend)
+            pipeline_config = PipelineGenAIConfig(
+                model_path=temp_dir, backend=config.backend, targets=config.soc_details
+            )
 
             execute(pipeline_config, output_path=output_model_path, stages=["source_transformations", "genai_builder"])
 
