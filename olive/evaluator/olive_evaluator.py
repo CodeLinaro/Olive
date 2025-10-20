@@ -39,7 +39,7 @@ from olive.platform_sdk.qualcomm.utils.data_loader import FileListCommonDataLoad
 if TYPE_CHECKING:
     from torch.utils.data import DataLoader
 
-    from olive.model import OliveModelHandler, OpenVINOModelHandler, QNNModelHandler
+    from olive.model import OliveModelHandler, OpenVINOModelHandler, QairtContainerModelHandler, QNNModelHandler
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +307,7 @@ class _OliveEvaluator(OliveEvaluator):
         for original_metric in metrics:
             # use model io_config if user does not specify input_names and input_shapes
             metric = OliveEvaluator.generate_metric_user_config_with_model_io(original_metric, model)
+            print(model.__dict__)
             dataloader, eval_func, post_func = OliveEvaluator.get_user_config(model.framework, metric)
             if metric.type == MetricType.ACCURACY:
                 metrics_res[metric.name] = self._evaluate_accuracy(
@@ -878,6 +879,87 @@ class OpenVINOEvaluator(_OliveEvaluator):
             model.run_session(session, input_data, **run_kwargs)
             latencies.append(time.perf_counter() - t)
         return latencies
+
+
+@Registry.register("QairtContainerEvaluator")
+class QairtContainerEvaluator(_OliveEvaluator):
+    def _inference(
+        self,
+        model: "QairtContainerModelHandler",
+        metric: Metric,
+        dataloader: "DataLoader",
+        post_func=None,
+        device: Device = Device.CPU,
+        execution_providers: Union[str, list[str]] = None,
+    ) -> tuple[OliveModelOutput, Any]:
+        dataloader = self._prepare_dataloader(dataloader, model)
+        session = model.prepare_session(
+            inference_settings=metric.get_inference_settings(Framework.QAIRT.lower()), device=device
+        )
+
+        preds = []
+        targets = []
+        logits = []
+        run_kwargs = metric.get_run_kwargs()
+        for data_dir, input_list, labels in dataloader:
+            run_kwargs["data_dir"] = data_dir
+            result = model.run_session(session, input_list, **run_kwargs)
+            for idx, output in enumerate(result.get("result")):
+                if post_func:
+                    post_output = post_func(output)
+                else:
+                    raise ValueError("Post processing function is required for QNN model")
+                preds.extend(post_output.tolist())
+                if isinstance(labels[idx], (list, np.ndarray)):
+                    targets.extend(labels[idx])
+                else:
+                    targets.append(labels[idx])
+                logits.extend(output.tolist())
+        return OliveModelOutput(preds=preds, logits=logits), targets
+
+    def _evaluate_accuracy(
+        self,
+        model: "QNNModelHandler",
+        metric: Metric,
+        dataloader: "DataLoader",
+        post_func=None,
+        device: Device = Device.CPU,
+        execution_providers: Union[str, list[str]] = None,
+    ) -> MetricResult:
+        inference_output, targets = self._inference(model, metric, dataloader, post_func, device, execution_providers)
+        return OliveEvaluator.compute_accuracy(metric, inference_output, targets)
+
+    def _evaluate_raw_latency(
+        self,
+        model: "QNNModelHandler",
+        metric: Metric,
+        dataloader: "DataLoader",
+        post_func=None,
+        device: Device = Device.CPU,
+        execution_providers: Union[str, list[str]] = None,
+    ) -> list[float]:
+        dataloader = self._prepare_dataloader(dataloader, model, 1)
+        warmup_num, repeat_test_num, sleep_num = get_latency_config_from_metric(metric)
+        session = model.prepare_session(
+            inference_settings=metric.get_inference_settings(Framework.QNN.lower()), device=device
+        )
+
+        data_dir, input_data, _ = next(iter(dataloader))
+        # for qnn-net-run only keep 20 logs
+        total_runs = min(warmup_num + repeat_test_num, 20)
+        run_kwargs = metric.get_run_kwargs()
+        run_kwargs["data_dir"] = data_dir
+        run_kwargs["runs"] = total_runs
+        run_kwargs["sleep"] = sleep_num
+        results = model.run_session(session, input_data, **run_kwargs)
+        return results["latencies"]["net_run"][warmup_num:]
+
+    def _prepare_dataloader(
+        self, dataloader: "DataLoader", model: "QairtContainerModelHandler", file_chunk_size=None
+    ) -> FileListDataLoader:
+        if isinstance(dataloader, FileListDataLoader):
+            return dataloader
+        return FileListCommonDataLoader(dataloader, model.io_config, batch_size=file_chunk_size)
 
 
 @Registry.register(str(Framework.QNN))
