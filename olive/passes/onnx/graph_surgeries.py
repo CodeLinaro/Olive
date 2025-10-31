@@ -14,7 +14,7 @@ from typing import Any, ClassVar, Optional
 
 import numpy as np
 import onnx
-from onnx import ModelProto, TensorProto
+from onnx import ModelProto, TensorProto, numpy_helper
 from onnx.helper import make_tensor
 from onnx_ir.passes.common import DeduplicateHashedInitializersPass
 from onnxscript import ir, rewriter
@@ -1190,6 +1190,289 @@ class MatMulAddToGemm(ProtoSurgeon):
             graph_idx,
         )
         return reshape_output_name
+
+
+class MatMulAddToConv(ProtoSurgeon):
+    """Replace MatMul + Add with Transpose + Conv + Transpose.
+
+    Second MatMul input must be a 2D tensor and the other input of the Add node must be a 1D tensor.
+    If the first MatMul input is less than 4D and the shapes are static, it is Unsqueezed to 4D before the Transpose
+    node and Squeezed back to the original shape after the seconds Transpose node.
+    """
+
+    def __call__(self, model: ModelProto):
+        from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
+        try:
+            model = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        except Exception as e:
+            logger.debug("Shape inference failed. Will try to continue without it. Error: %s", e)
+
+        graph = model.graph
+        dag = OnnxDAG(model)
+
+        modified = 0
+        removed_nodes = set()
+        for node_name in dag.get_node_names():
+            if node_name in removed_nodes or dag.get_node_op_type(node_name) != "MatMul":
+                continue
+            matmul_name = node_name
+            graph_idx = dag.get_graph_idx(node_name)
+
+            matmul_consumers = dag.get_consumers(node_name)
+            if len(matmul_consumers) != 1 or dag.get_node_op_type(matmul_consumers[0]) != "Add":
+                continue
+            add_name = matmul_consumers[0]
+
+            out = dag.get_node_outputs(add_name)[0]
+            if dag.is_output(out):
+                continue
+
+            # check matmul input shapes
+            matmul_inputs = dag.get_node_inputs(node_name)
+
+            matmul_input_shapes = [dag.get_io_shape(i_name) for i_name in matmul_inputs]
+
+            if len(matmul_input_shapes[1]) != 2:
+                continue
+
+            if len(matmul_input_shapes[0]) > 4:
+                continue
+
+            matmul_output = dag.get_node_outputs(node_name)[0]
+            matmul_output_shape = dag.get_io_shape(matmul_output)
+            elem_type = dag.get_io_elem_type(matmul_output)
+
+            # check add input shapes
+            bias_input = None
+            for i_name in dag.get_node_inputs(add_name):
+                if i_name != matmul_output:
+                    bias_input = i_name
+                    break
+            if bias_input is None or len(dag.get_io_shape(bias_input)) != 1:
+                continue
+            add_output = dag.get_node_outputs(add_name)[0]
+
+            matmul_weight_init = next((i for i in graph.initializer if i.name == matmul_inputs[1]), None)
+            matmul_weight_array = numpy_helper.to_array(matmul_weight_init)
+
+            conv_weight_array = np.reshape(
+                np.transpose(matmul_weight_array), [matmul_input_shapes[1][1], matmul_input_shapes[1][0], 1, 1]
+            )
+            conv_weight_name = matmul_inputs[1] + "_conv"
+
+            conv_name = self.create_new_name(matmul_name, "MatMul", "Conv")
+            conv_inputs = [matmul_inputs[0], conv_weight_name, bias_input]
+
+            matmul_a_shape = matmul_input_shapes[0]
+
+            pre_transpose_input_name = matmul_inputs[0]
+            pre_transpose_input_shape = matmul_a_shape.copy()
+
+            if len(matmul_a_shape) != 4:
+                if any(
+                    not isinstance(dim_value, int) for dim_value in [*matmul_input_shapes[0], *matmul_input_shapes[1]]
+                ):
+                    continue
+
+                unsqueeze_name = self.create_new_name(conv_name, "Conv", "Unsqueeze_pre")
+                num_axes = 4 - len(matmul_a_shape)
+                axes = [i + 1 for i in range(num_axes)]
+                pre_transpose_input_name = self.add_unsqueeze_node(
+                    dag, graph_idx, unsqueeze_name, pre_transpose_input_name, pre_transpose_input_shape, axes, elem_type
+                )
+                _ = [matmul_output_shape.insert(i, 1) for i in axes]
+
+            pre_transpose_name = self.create_new_name(conv_name, "Conv", "Transpose_pre")
+            pre_transpose_perm = [0, 3, 1, 2]
+            conv_inputs[0] = self.add_transpose_node(
+                dag,
+                graph_idx,
+                pre_transpose_name,
+                pre_transpose_input_name,
+                pre_transpose_input_shape,
+                pre_transpose_perm,
+                elem_type,
+            )
+
+            conv_output_name = f"{conv_name}_output"
+            conv_output_shape = [matmul_output_shape[i] for i in pre_transpose_perm]
+
+            conv_weight_init = numpy_helper.from_array(conv_weight_array, name=conv_weight_name)
+            dag.add_initializer(conv_weight_init, graph_idx)
+
+            dag.add_node(
+                onnx.helper.make_node("Conv", inputs=conv_inputs, outputs=[conv_output_name], name=conv_name),
+                graph_idx,
+            )
+            dag.add_value_info(
+                onnx.helper.make_tensor_value_info(
+                    conv_output_name,
+                    elem_type,
+                    conv_output_shape,
+                ),
+                graph_idx,
+            )
+
+            post_transpose_name = self.create_new_name(conv_name, "Conv", "Transpose_post")
+            post_transpose_perm = [0, 2, 3, 1]
+            final_output_name = self.add_transpose_node(
+                dag, graph_idx, post_transpose_name, conv_output_name, conv_output_shape, post_transpose_perm, elem_type
+            )
+            final_output_shape = [conv_output_shape[i] for i in post_transpose_perm]
+
+            if len(matmul_a_shape) != 4:
+                squeeze_name = self.create_new_name(conv_name, "Conv", "Squeeze_pre")
+                num_axes = 4 - len(matmul_a_shape)
+                axes = [i + 1 for i in range(num_axes)]
+                final_output_name = self.add_squeeze_node(
+                    dag, graph_idx, squeeze_name, final_output_name, final_output_shape, axes, elem_type
+                )
+
+            for consumer in dag.get_consumers(add_name):
+                dag.replace_node_input(consumer, add_output, final_output_name)
+
+            for to_remove in [add_name, matmul_name]:
+                dag.remove_node(to_remove)
+                removed_nodes.add(to_remove)
+
+            matmul_weight_init_usage = [node for node in graph.node if matmul_weight_init.name in node.input]
+            if len(matmul_weight_init_usage) == 1 and matmul_weight_init_usage[0] == matmul_name:
+                graph.initializer.remove(matmul_weight_init)
+
+            modified += 1
+
+        if modified > 0:
+            logger.debug("Replaced %d MatMul + Add nodes with Gemm nodes", modified)
+
+        dag.update()
+        return dag.model
+
+    @staticmethod
+    def add_transpose_node(
+        dag: OnnxDAG,
+        graph_idx: int,
+        node_name: str,
+        input_name: str,
+        input_shape: list[int],
+        perm: list[int],
+        output_elem_type: int,
+    ) -> str:
+        """Add a transpose node to the graph.
+
+        :param dag: The OnnxDAG object.
+        :param graph_idx: The index of the graph.
+        :param node_name: The name of the node.
+        :param input_name: The name of the input tensor.
+        :param perm: The perm for the transpose operation.
+        :param output_elem_type: The element type of the output tensor.
+        :return: The name of the output tensor after reshaping.
+        """
+        # need to reshape the first input to 2D
+
+        transpose_output_name = f"{node_name}_output"
+        dag.add_node(
+            onnx.helper.make_node(
+                "Transpose",
+                inputs=[input_name],
+                outputs=[transpose_output_name],
+                perm=perm,
+                name=node_name,
+            ),
+            graph_idx,
+        )
+        output_shape = [input_shape[i] for i in perm]
+        dag.add_value_info(
+            onnx.helper.make_tensor_value_info(
+                transpose_output_name,
+                output_elem_type,
+                output_shape,
+            ),
+            graph_idx,
+        )
+        return transpose_output_name
+
+    @staticmethod
+    def add_unsqueeze_node(
+        dag: OnnxDAG,
+        graph_idx: int,
+        node_name: str,
+        input_name: str,
+        input_shape: list[int],
+        axes: list[int],
+        output_elem_type: int,
+    ) -> str:
+        """Insert an Unsqueeze node that adds dimensions at the specified axes."""
+        unsqueeze_axes_name = f"{node_name}_axes"
+        unsqueeze_output_name = f"{node_name}_output"
+
+        # Create initializer for axes
+        dag.add_initializer(
+            onnx.numpy_helper.from_array(np.array(axes, dtype=np.int64), unsqueeze_axes_name),
+            graph_idx,
+        )
+        # Add the Unsqueeze node
+        dag.add_node(
+            onnx.helper.make_node(
+                "Unsqueeze",
+                inputs=[input_name, unsqueeze_axes_name],
+                outputs=[unsqueeze_output_name],
+                name=node_name,
+            ),
+            graph_idx,
+        )
+        # Register the output value info (shape will be inferred later)
+        _ = [input_shape.insert(i, 1) for i in axes]
+        dag.add_value_info(
+            onnx.helper.make_tensor_value_info(
+                unsqueeze_output_name,
+                output_elem_type,
+                input_shape,
+            ),
+            graph_idx,
+        )
+        return unsqueeze_output_name
+
+    @staticmethod
+    def add_squeeze_node(
+        dag: OnnxDAG,
+        graph_idx: int,
+        node_name: str,
+        input_name: str,
+        input_shape: list[int],
+        axes: list[int],
+        output_elem_type: int,
+    ) -> str:
+        """Insert an Unsqueeze node that adds dimensions at the specified axes."""
+        squeeze_axes_name = f"{node_name}_axes"
+        squeeze_output_name = f"{node_name}_output"
+
+        # Create initializer for axes
+        dag.add_initializer(
+            onnx.numpy_helper.from_array(np.array(axes, dtype=np.int64), squeeze_axes_name),
+            graph_idx,
+        )
+        # Add the Unsqueeze node
+        dag.add_node(
+            onnx.helper.make_node(
+                "Squeeze",
+                inputs=[input_name, squeeze_axes_name],
+                outputs=[squeeze_output_name],
+                name=node_name,
+            ),
+            graph_idx,
+        )
+        # Register the output value info (shape will be inferred later)
+        input_shape = [x for i, x in enumerate(input_shape) if i not in axes]
+        dag.add_value_info(
+            onnx.helper.make_tensor_value_info(
+                squeeze_output_name,
+                output_elem_type,
+                input_shape,
+            ),
+            graph_idx,
+        )
+        return squeeze_output_name
 
 
 class RemoveRopeMultiCache(ProtoSurgeon):
