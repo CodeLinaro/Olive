@@ -1153,6 +1153,68 @@ Static shaped inputs:
                           [1D bias]
 ```
 
+### `MatMulAddToConv`
+
+#### Description
+
+Replace MatMul + Add with Tranpose + Conv + Transpose.
+
+Second MatMul input must be a 2D tensor and the other input of the Add node must be a 1D tensor. If the first MatMul input is less than 4D and the shapes are static, it is Unsqueezed to 4D before the first Transpose node and Squeezed back to the original shape after the second Transpose node.
+
+#### Example
+
+Initial model graph:
+
+```
+Static/Dynamic shaped input:
+             [2D weight]   [1D bias]
+                 |            |
+                 v            v
+[4D Input] --> MatMul -----> Add
+
+Static shaped input:
+             [2D weight]    [1D bias]
+                 |             |
+                 v             v
+[N-D Input] --> MatMul -----> Add
+```
+
+After applying:
+
+```json
+{
+    "type": "GraphSurgeries",
+    "surgeries": [
+        {
+            "surgeon": "MatMulAddToConv"
+        }
+    ]
+}
+```
+
+
+Transformed model graph:
+
+```
+Static/Dynamic shaped inputs:
+[2D weight] --> Transpose --> [2D weight]
+                                 |
+                                 v
+  [4D Input] --> Transpose --> Conv --> Transpose 
+                                 ^
+                                 |
+                              [1D bias]
+
+Static shaped inputs:
+            [2D weight] --> Transpose --> [2D weight]
+                                             |
+                                             v
+[N-D Input] --> Unsqueeze -> Transpose --> Conv --> Transpose --> Squeeze
+                                             ^
+                                             |
+                                         [1D bias]
+```
+
 ### `ReplaceAttentionMaskValue`
 
 #### Description
