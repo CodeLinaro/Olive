@@ -14,7 +14,7 @@ from typing import Any, ClassVar, Optional
 
 import numpy as np
 import onnx
-from onnx import ModelProto, TensorProto
+from onnx import ModelProto, TensorProto, numpy_helper
 from onnx.helper import make_tensor
 from onnx_ir.passes.common import DeduplicateHashedInitializersPass
 from onnxscript import ir, rewriter
@@ -1254,7 +1254,7 @@ class MatMulAddToConv(ProtoSurgeon):
             add_output = dag.get_node_outputs(add_name)[0]
 
             matmul_weight_init = next((i for i in graph.initializer if i.name == matmul_inputs[1]), None)
-            matmul_weight_array = onnx.numpy_helper.to_array(matmul_weight_init)
+            matmul_weight_array = numpy_helper.to_array(matmul_weight_init)
 
             conv_weight_array = np.reshape(
                 np.transpose(matmul_weight_array), [matmul_input_shapes[1][1], matmul_input_shapes[1][0], 1, 1]
@@ -1298,7 +1298,7 @@ class MatMulAddToConv(ProtoSurgeon):
             conv_output_name = f"{conv_name}_output"
             conv_output_shape = [matmul_output_shape[i] for i in pre_transpose_perm]
 
-            conv_weight_init = onnx.numpy_helper.from_array(conv_weight_array, name=conv_weight_name)
+            conv_weight_init = numpy_helper.from_array(conv_weight_array, name=conv_weight_name)
             dag.add_initializer(conv_weight_init, graph_idx)
 
             dag.add_node(
