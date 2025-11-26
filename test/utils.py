@@ -342,10 +342,11 @@ def create_raw_data(raw_data_dir, input_names, input_shapes, input_types=None, n
 
 
 def make_local_tiny_llama(save_path, model_type="hf"):
-    input_model = HfModelHandler(model_path="hf-internal-testing/tiny-random-LlamaForCausalLM")
-    loaded_model = input_model.load_model()
     # this checkpoint has an invalid generation config that cannot be saved
-    loaded_model.generation_config.pad_token_id = 1
+    input_model = HfModelHandler(
+        model_path="hf-internal-testing/tiny-random-LlamaForCausalLM", load_kwargs={"pad_token_id": 1}
+    )
+    loaded_model = input_model.load_model()
 
     save_path = Path(save_path)
     save_path.mkdir(parents=True, exist_ok=True)
@@ -362,6 +363,12 @@ def make_local_tiny_llama(save_path, model_type="hf"):
         HfModelHandler(model_path=save_path)
         if model_type == "hf"
         else ONNXModelHandler(model_path=save_path, onnx_file_name="model.onnx")
+    )
+
+
+def get_tiny_phi3():
+    return HfModelHandler(
+        model_path="katuni4ka/tiny-random-phi3", load_kwargs={"revision": "585361abfee667f3c63f8b2dc4ad58405c4e34e2"}
     )
 
 
