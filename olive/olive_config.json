@@ -37,15 +37,6 @@
             "supported_quantization_encodings": [  ]
         },
         "ComposeOnnxModels": {
-            "QairtGenAIBuilder": {
-                "module_path": "olive.passes.qairt.gen_ai_builder.QairtGenAIBuilder",
-                "supported_providers": [ "QNNExecutionProvider" ],
-                "supported_accelerators": [ "npu" ],
-                "supported_precisions": [ "*" ],
-                "supported_algorithms": [  ],
-                "supported_quantization_encodings": [  ],
-                "extra_dependencies": [ "qairt-dev" ]
-            },
             "module_path": "olive.passes.onnx.compose.ComposeOnnxModels",
             "supported_providers": [ "*" ],
             "supported_accelerators": [ "*" ],
