@@ -1206,13 +1206,13 @@ Static/Dynamic shaped inputs:
                               [1D bias]
 
 Static shaped inputs:
-            [2D weight] --> Transpose --> [2D weight]
-                                             |
-                                             v
-[N-D Input] --> Unsqueeze -> Transpose --> Conv --> Transpose --> Squeeze
-                                             ^
-                                             |
-                                         [1D bias]
+        [2D weight] --> Transpose --> [2D weight]
+                                          |
+                                          v
+[N-D Input] --> Reshape -> Transpose --> Conv --> Transpose --> Reshape
+                                          ^
+                                          |
+                                      [1D bias]
 ```
 
 ### `ReplaceAttentionMaskValue`
