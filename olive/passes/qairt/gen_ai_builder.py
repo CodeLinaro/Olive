@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Union
 
 from olive.hardware import AcceleratorSpec
-from olive.model import HfModelHandler, QairtContainerModelHandler, QairtPreparedModelHandler
+from olive.model import HfModelHandler, QairtModelHandler, QairtPreparedModelHandler
 from olive.passes import Pass
 from olive.passes.pass_config import BasePassConfig, PassConfigParam
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class QairtGenAIBuilder(Pass):
-    """Create a QairtContainerModelHandler from a QairtPreparedModelHandler.
+    """Create a QairtModelHandler from a QairtPreparedModelHandler.
 
     Applies various QAIRT-specific optimizations depending on model architecture,
     converts them to DLC, and compiles a context binary compatible with the specified SoC.
@@ -59,9 +59,10 @@ class QairtGenAIBuilder(Pass):
         model: Union[HfModelHandler, QairtPreparedModelHandler],
         config: type[BasePassConfig],
         output_model_path: str,
-    ) -> QairtContainerModelHandler:
+    ) -> QairtModelHandler:
         # Attempt to import QAIRT Python API - if not present, something is probably wrong with user setup
         try:
+            # These should eventually be exported from the top-level import qairt so they can be accessed easily
             from qairt.api.configs.common import BackendType
             from qairt.api.transforms.model_transformer_config import (
                 ARn_ContextLengthConfig,
@@ -69,7 +70,7 @@ class QairtGenAIBuilder(Pass):
                 SplitModelConfig,
             )
             from qairt.gen_ai_api.gen_ai_builder_factory import GenAIBuilderFactory
-            from qairt.modules.genie_execution.genie_config import Lade, LADEType
+            from qairt.modules.genie_execution.genie_config import LadeConfig, LADEType
         except ImportError as exc:
             raise ImportError(
                 "Failed to import QAIRT GenAIBuilder API - ensure qairt-dev setup completed successfully."
@@ -113,5 +114,4 @@ class QairtGenAIBuilder(Pass):
 
         gen_ai_container = gen_ai_builder.build()
         gen_ai_container.save(output_model_path, exist_ok=True)
-
-        return QairtContainerModelHandler(model_path=output_model_path)
+        return QairtModelHandler(model_path=output_model_path)
