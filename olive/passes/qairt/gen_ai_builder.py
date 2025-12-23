@@ -107,8 +107,8 @@ class QairtGenAIBuilder(Pass):
                     ),
                 ),
             )
-            gen_ai_builder._prepare_embedding_lut = True
-            gen_ai_builder.speculative_config = Lade(
+            #gen_ai_builder._prepare_embedding_lut = True
+            gen_ai_builder.speculative_config = LadeConfig(
                 version=1, window=8, ngram=5, gcap=8, update_mode=LADEType.ALWAYS_FWD_ONE
             )
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Union
 
 import onnx.helper as helper
-from onnx import TensorProto, save
+from onnx import checker, TensorProto, save
 
 from olive.common.utils import hardlink_copy_dir, hardlink_copy_file
 from olive.hardware.accelerator import AcceleratorSpec, Device
@@ -61,6 +61,19 @@ class QairtEncapsulation(Pass):
                 description="Log level to be used within underlying QAIRT components."
                 "Valid values: DEBUG, INFO, WARN, ERROR.",
             ),
+            "run_checker": PassConfigParam(
+                type_=bool,
+                default_value=False,
+                description="Runs the onnx checker on the model before it is encapsulated."
+            ),
+            "opset_imports": PassConfigParam(
+                type_=list,
+                default_value=[
+                    ["com.microsoft", 1],
+                ],
+                required=False,
+                description="Opset name and version to be added in the generated context model",
+            ),
         }
 
     def _run_for_config(
@@ -82,12 +95,21 @@ class QairtEncapsulation(Pass):
         # THIS IS SOMEWHAT COMPLICATED CAUSE IT DEPENDS ON THE NODE TYPE WE ARE USING FOR THIS MODEL, SHOULD BE ORT INPUTS
 
         # Input/Ouptut metadata
-        input_info = {}
-        output_info = {}
+        container.inputs = [("dummy_input", TensorProto.INT32, [-1, -1, -1, -1])]
+        container.outputs = [("dummy_output", TensorProto.INT32, [-1, -1, -1, -1])]
+        
+        input_info = {input[0]: (input[1], input[2]) for input in container.inputs}
+
+        output_info = {output[0]: (output[1], output[2]) for output in container.outputs}
 
         # Input/Output tensor helpers
         inputs = []
+        for (name, datatype, shape) in container.inputs:
+            inputs.append(helper.make_tensor_value_info(name, datatype, shape))
+
         outputs = []
+        for (name, datatype, shape) in container.outputs:
+            outputs.append(helper.make_tensor_value_info(name, datatype, shape))
 
         # TODO - Should maybe separate this to a helper function so that different export formats can have their own functions
         # Export the container 
@@ -101,17 +123,20 @@ class QairtEncapsulation(Pass):
             domain="com.microsoft",
         )
 
-        context_node.attribute.extend([helper.make_attribute("context_type", "zip")])
+        context_node.attribute.extend([helper.make_attribute("ep_context_type", "zip")])
         context_node.attribute.extend([helper.make_attribute("ep_zip_context", "model.zip")])
+        context_node.attribute.extend([helper.make_attribute("source", "QAIRTExport")])
 
         # Create the ONNX Graph
         graph_def = helper.make_graph(nodes=[context_node], name="EP_Context_Model", inputs=inputs, outputs=outputs)
-        # TODO - Do we want these op set imports back?
-        #op_imports = [helper.make_opsetid(i[0], i[1]) for i in config.opset_imports]
+        op_imports = [helper.make_opsetid(i[0], i[1]) for i in config.opset_imports]
 
         # Define the model with an Execution Provider (EP) Context
-        model_def = helper.make_model(graph_def) #opset_imports=op_imports)
+        model_def = helper.make_model(graph_def, opset_imports=op_imports)
         model_def.ir_version = 10
+
+        if config.run_checker:
+            checker.check_model(model_def)
 
         # Save the model
         # TODO - Need to derive a better name here from LLMContainer
