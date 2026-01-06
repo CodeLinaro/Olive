@@ -6,6 +6,7 @@ import importlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
+import torch
 
 from transformers import AutoConfig, AutoModel, AutoTokenizer, GenerationConfig
 
@@ -24,6 +25,7 @@ def load_model_from_task(
     model_name_or_path: str,
     custom_task_class_name: str = None,
     custom_task_class_module: str = None,
+    untie_lm_head_weights: bool = False,
     **kwargs,
 ) -> "PreTrainedModel":
     """Load huggingface model from task and model_name_or_path."""
@@ -72,6 +74,30 @@ def load_model_from_task(
     for i, model_class in enumerate(class_tuple):
         try:
             model = from_pretrained(model_class, model_name_or_path, "model", **kwargs)
+            if untie_lm_head_weights:
+                cfg = model.config
+
+                # 1) Break the tie_word_embeddings flag
+                if getattr(cfg, "tie_word_embeddings", False):
+                    cfg.tie_word_embeddings = False
+
+                # 2) Clone lm_head weights so they are not the same tensor as the embeddings
+                with torch.no_grad():
+                    # Gemma-3 uses `lm_head` and `model.embed_tokens`
+                    tied = model.lm_head.weight is model.model.embed_tokens.weight
+                    if tied:
+                        model.lm_head.weight = torch.nn.Parameter(
+                            model.lm_head.weight.clone()
+                        )
+
+                # 3) (Optional but safer) clear any internal tying metadata, if present
+                if hasattr(model, "_tied_weights_keys"):
+                    # For transformers’ tie mechanism, this is a list of tuples
+                    # Remove any pair that mentions "lm_head" so GPTQ doesn’t see it as tied.
+                    model._tied_weights_keys = [
+                        pair for pair in model._tied_weights_keys
+                        if "lm_head" not in pair[0] and "lm_head" not in pair[1]
+                    ]
             logger.debug("Loaded model %s with name_or_path %s", model_class, model_name_or_path)
             break
         except (OSError, ValueError) as e:
@@ -218,6 +244,7 @@ def get_generation_config(model_name_or_path: str, **kwargs) -> Optional["Genera
 
 def get_tokenizer(model_name_or_path: str, **kwargs) -> Union["PreTrainedTokenizer", "PreTrainedTokenizerFast"]:
     """Get HF model's tokenizer."""
+    print("model_name_or_path",model_name_or_path)
     tokenizer = from_pretrained(AutoTokenizer, model_name_or_path, "tokenizer", **kwargs)
     if getattr(tokenizer, "pad_token", None) is None:
         logger.debug("Setting pad_token to eos_token for tokenizer %s", model_name_or_path)
