@@ -108,7 +108,7 @@ class StaticLLM(Pass):
                 # resave the model with external data
                 intermediate_model_path = output_dir / f"transformer{suffix}.onnx"
                 resave_model(
-                    component_models[component_name].model_path, intermediate_model_path, force_external_data=True
+                    component_models[component_name].model_path, intermediate_model_path, force_external_data=False
                 )
 
                 for key, param_mapping in param_mapping_dict.items():
