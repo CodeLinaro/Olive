@@ -34,6 +34,11 @@ class QairtPreparedModelHandler(OliveModelHandler):
             io_config=io_config,
         )
 
+    @property
+    def size_on_disk(self) -> int:
+        """Compute size of the model on disk."""
+        return 0
+
     def load_model(self, rank: int = None, cache_model: bool = True):
         raise NotImplementedError("QairtPreparedModelHandler does not support load_model")
 
@@ -73,6 +78,11 @@ class QairtModelHandler(OliveModelHandler):
             model_attributes=model_attributes,
             io_config=io_config,
         )
+
+    @property
+    def size_on_disk(self) -> int:
+        """Compute size of the model on disk."""
+        return 0
 
     def load_model(self, rank: int = None, cache_model: bool = True):
         raise NotImplementedError("QairtModelHandler does not support load_model")
