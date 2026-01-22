@@ -70,7 +70,6 @@ class QairtGenAIBuilder(Pass):
                 SplitModelConfig,
             )
             from qairt.gen_ai_api.gen_ai_builder_factory import GenAIBuilderFactory
-            from qairt.modules.genie_execution.genie_config import LadeConfig, LADEType
         except ImportError as exc:
             raise ImportError(
                 "Failed to import QAIRT GenAIBuilder API - ensure qairt-dev setup completed successfully."
@@ -101,16 +100,13 @@ class QairtGenAIBuilder(Pass):
             # TODO - Should add these configurations to top-level Olive configuration, for now these are defaults
             gen_ai_builder.set_transformation_options(
                 config=ModelTransformerConfig(
-                    arn_cl_options=ARn_ContextLengthConfig(auto_regression_number=[32, 128]),
+                    arn_cl_options=ARn_ContextLengthConfig(auto_regression_number=[1, 128]),
                     split_model=SplitModelConfig(
                         num_splits=4, split_lm_head=True, split_embedding=True
                     ),
                 ),
             )
-            #gen_ai_builder._prepare_embedding_lut = True
-            gen_ai_builder.speculative_config = LadeConfig(
-                version=1, window=8, ngram=5, gcap=8, update_mode=LADEType.ALWAYS_FWD_ONE
-            )
+            gen_ai_builder._prepare_embedding_lut = False
 
         gen_ai_container = gen_ai_builder.build()
         gen_ai_container.save(output_model_path, exist_ok=True)
