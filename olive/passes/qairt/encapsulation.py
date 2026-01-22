@@ -113,7 +113,7 @@ class QairtEncapsulation(Pass):
 
         # TODO - Should maybe separate this to a helper function so that different export formats can have their own functions
         # Export the container 
-        container.export(output_model_path, export_format=ExportFormat.ZIP)  # Expect no binaries/libs but exported model
+        container.export(output_model_path, export_format=ExportFormat.LM_EXECUTOR)  # Expect no binaries/libs but exported model
 
         context_node = helper.make_node(
             "EPContext",
