@@ -62,14 +62,8 @@ class QairtGenAIBuilder(Pass):
     ) -> QairtModelHandler:
         # Attempt to import QAIRT Python API - if not present, something is probably wrong with user setup
         try:
-            # These should eventually be exported from the top-level import qairt so they can be accessed easily
-            from qairt.api.configs.common import BackendType
-            from qairt.api.transforms.model_transformer_config import (
-                ARn_ContextLengthConfig,
-                ModelTransformerConfig,
-                SplitModelConfig,
-            )
-            from qairt.gen_ai_api.gen_ai_builder_factory import GenAIBuilderFactory
+            import qairt
+            import qairt.gen_ai_api as qairt_genai
         except ImportError as exc:
             raise ImportError(
                 "Failed to import QAIRT GenAIBuilder API - ensure qairt-dev setup completed successfully."
@@ -84,24 +78,24 @@ class QairtGenAIBuilder(Pass):
                 "QAIRT GenAIBuilder cache directory not set. Using this will decrease future preparation time."
             )
 
-        if config.backend == BackendType.CPU.value and not isinstance(model, HfModelHandler):
+        if config.backend == qairt.BackendType.CPU.value and not isinstance(model, HfModelHandler):
             raise ValueError("QAIRT CPU GenAIBuilder can only consume HfModelHandler")
         
-        if config.backend == BackendType.HTP.value and not isinstance(model, QairtPreparedModelHandler):
+        if config.backend == qairt.BackendType.HTP.value and not isinstance(model, QairtPreparedModelHandler):
             raise ValueError("QAIRT HTP GenAIBuilder can only consume QairtPreparedModelHandler")
 
-        gen_ai_builder = GenAIBuilderFactory.create(
+        gen_ai_builder = qairt_genai.GenAIBuilderFactory.create(
             pretrained_model_path=Path(model.model_path), backend_type=config.backend, cache_root=config.cache_dir
         )
         # Can only set target and transformation configurations if the BE is HTP
-        if config.backend == BackendType.HTP.value:
+        if config.backend == qairt.BackendType.HTP.value:
             gen_ai_builder.set_targets([config.soc_details])
             # Set transformations configurations
             # TODO - Should add these configurations to top-level Olive configuration, for now these are defaults
             gen_ai_builder.set_transformation_options(
-                config=ModelTransformerConfig(
-                    arn_cl_options=ARn_ContextLengthConfig(auto_regression_number=[1, 128]),
-                    split_model=SplitModelConfig(
+                config=qairt.ModelTransformerConfig(
+                    arn_cl_options=qairt.ARn_ContextLengthConfig(auto_regression_number=[1, 128]),
+                    split_model=qairt.SplitModelConfig(
                         num_splits=4, split_lm_head=True, split_embedding=True
                     ),
                 ),

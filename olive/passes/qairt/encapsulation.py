@@ -82,14 +82,15 @@ class QairtEncapsulation(Pass):
         config: type[BasePassConfig],
         output_model_path: str,
     ) -> ONNXModelHandler:
+        # Attempt to import QAIRT Python API - if not present, something is probably wrong with user setup
         try:
-            from qairt.gen_ai_api.containers.llm_container import LLMContainer
-            from qairt.modules.genie_execution.genie_config import ExportFormat
+            import qairt
+            import qairt.gen_ai_api as qairt_genai
         except ImportError:
             raise ImportError("Please install olive-ai[qairt] to use QAIRT models.")
         
 
-        container: LLMContainer = LLMContainer.load(model.model_path)
+        container: qairt_genai.LLMContainer = qairt_genai.LLMContainer.load(model.model_path)
 
         # NEED TO EXTRACT METADATA FROM CONTAINER FOR ONNX WRAPPING SCRIPT
         # THIS IS SOMEWHAT COMPLICATED CAUSE IT DEPENDS ON THE NODE TYPE WE ARE USING FOR THIS MODEL, SHOULD BE ORT INPUTS
@@ -113,7 +114,7 @@ class QairtEncapsulation(Pass):
 
         # TODO - Should maybe separate this to a helper function so that different export formats can have their own functions
         # Export the container 
-        container.export(output_model_path, export_format=ExportFormat.LM_EXECUTOR)  # Expect no binaries/libs but exported model
+        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)  # Expect no binaries/libs but exported model
 
         context_node = helper.make_node(
             "EPContext",
