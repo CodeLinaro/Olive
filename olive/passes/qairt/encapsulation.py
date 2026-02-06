@@ -96,8 +96,9 @@ class QairtEncapsulation(Pass):
         # THIS IS SOMEWHAT COMPLICATED CAUSE IT DEPENDS ON THE NODE TYPE WE ARE USING FOR THIS MODEL, SHOULD BE ORT INPUTS
 
         # Input/Ouptut metadata
-        container.inputs = [("dummy_input", TensorProto.INT32, [-1, -1, -1, -1])]
-        container.outputs = [("dummy_output", TensorProto.INT32, [-1, -1, -1, -1])]
+        # TODO - Depending on export format the datatypes here may need to change
+        container.inputs = [("dummy_input", TensorProto.UINT32, [-1, -1, -1, -1])]
+        container.outputs = [("dummy_output", TensorProto.FLOAT, [-1, -1, -1, -1])]
         
         input_info = {input[0]: (input[1], input[2]) for input in container.inputs}
 

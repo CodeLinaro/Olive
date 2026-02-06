@@ -92,14 +92,14 @@ class QairtGenAIBuilder(Pass):
             gen_ai_builder.set_targets([config.soc_details])
             # Set transformations configurations
             # TODO - Should add these configurations to top-level Olive configuration, for now these are defaults
-            gen_ai_builder.set_transformation_options(
-                config=qairt.ModelTransformerConfig(
-                    arn_cl_options=qairt.ARn_ContextLengthConfig(auto_regression_number=[1, 128]),
-                    split_model=qairt.SplitModelConfig(
-                        num_splits=4, split_lm_head=True, split_embedding=True
-                    ),
-                ),
-            )
+            #gen_ai_builder.set_transformation_options(
+                #config=qairt.ModelTransformerConfig(
+                    #arn_cl_options=qairt.ARn_ContextLengthConfig(auto_regression_number=[1, 128]),
+                    #split_model=qairt.SplitModelConfig(
+                        #num_splits=4, split_lm_head=True, split_embedding=True
+                    #),
+                #),
+            #)
             gen_ai_builder._prepare_embedding_lut = False
 
         gen_ai_container = gen_ai_builder.build()
