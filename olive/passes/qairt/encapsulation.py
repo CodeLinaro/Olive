@@ -120,7 +120,8 @@ class QairtEncapsulation(Pass):
 
         # TODO - Should maybe separate this to a helper function so that different export formats can have their own functions
         # Export the container 
-        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR_DLC)  # Expect no binaries/libs but exported model
+        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)  # Expect no binaries/libs but exported model
+        #container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR_DLC)
 
         context_node = helper.make_node(
             "EPContext",
@@ -156,10 +157,14 @@ class QairtEncapsulation(Pass):
 
         save(model_def, context_model_output_dir)
 
+        # Source model configuration is required in output directory
+        config_path = Path(model.model_path) / "config.json"
+        dest_path = Path(output_model_path)
+        hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
+
         # generate the genai_config.json file for GenAI models
         create_genai_config(context_model_output, output_model_path, config)
 
-        # NEED TO WRAP IN ONNX MODEL USING INFO + SCRIPT IN ONNX
         return ONNXModelHandler(model_path=output_model_path)
 
 
@@ -173,24 +178,16 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
     @param config: pass configuration containing backend and other settings
     @return: None
     """
-    ip_conf_pth = Path(output_path) / "config.json"
+    source_config_path = Path(output_path) / "config.json"
 
-    # do not create genai_config.json if config.json does not exist
-    if not ip_conf_pth.exists():
-        return
+    if not source_config_path.exists():
+        raise ValueError("Cannot create gen_ai_config.json if source model config doesn't exist.")
 
-    ip_gen_pth = Path(output_path) / "generation_config.json"
-
-    # do not create genai_config.json if generation_config.json does not exist
-    if not ip_gen_pth.exists():
-        return
-
-    # Step 1: Create your data structure
     genai_config = {
         "model": {
             "bos_token_id": -1,
             "context_length": -1,
-            "decoder": {
+            "lm_executor": {
                 "session_options": {
                     "log_id": "onnxruntime-genai",
                     "graph_optimization_level": "ORT_DISABLE_ALL",
@@ -231,11 +228,8 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
 
     import json
 
-    with open(ip_conf_pth) as f:
+    with open(source_config_path) as f:
         src_config = json.load(f)
-
-    with open(ip_gen_pth) as f:
-        src_gen_config = json.load(f)
 
     try:
         import onnx
@@ -253,30 +247,30 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
 
     genai_config["model"]["bos_token_id"] = src_config.get("bos_token_id", -1)
     genai_config["model"]["context_length"] = src_config.get("max_position_embeddings", -1)
-    genai_config["model"]["decoder"]["filename"] = model_name
-    genai_config["model"]["decoder"]["head_size"] = src_config.get("hidden_size", -1) // src_config.get(
+    genai_config["model"]["lm_executor"]["filename"] = model_name
+    genai_config["model"]["lm_executor"]["head_size"] = src_config.get("hidden_size", -1) // src_config.get(
         "num_attention_heads", -1
     )
-    genai_config["model"]["decoder"]["hidden_size"] = src_config.get("hidden_size", -1)
+    genai_config["model"]["lm_executor"]["hidden_size"] = src_config.get("hidden_size", -1)
 
     for name in inputs:
         if name != "beam_idx":
-            genai_config["model"]["decoder"]["inputs"].update({name: name})
+            genai_config["model"]["lm_executor"]["inputs"].update({name: name})
 
     for name in outputs:
-        genai_config["model"]["decoder"]["outputs"].update({name: name})
+        genai_config["model"]["lm_executor"]["outputs"].update({name: name})
 
-    genai_config["model"]["decoder"]["num_attention_heads"] = src_config.get("num_attention_heads", -1)
-    genai_config["model"]["decoder"]["num_hidden_layers"] = src_config.get("num_hidden_layers", -1)
-    genai_config["model"]["decoder"]["num_key_value_heads"] = src_config.get("num_key_value_heads", -1)
+    genai_config["model"]["lm_executor"]["num_attention_heads"] = src_config.get("num_attention_heads", -1)
+    genai_config["model"]["lm_executor"]["num_hidden_layers"] = src_config.get("num_hidden_layers", -1)
+    genai_config["model"]["lm_executor"]["num_key_value_heads"] = src_config.get("num_key_value_heads", -1)
 
-    genai_config["model"]["eos_token_id"] = src_gen_config.get("eos_token_id", -1)
+    genai_config["model"]["eos_token_id"] = src_config.get("eos_token_id", -1)
     genai_config["model"]["pad_token_id"] = (
-        src_gen_config["pad_token_id"]
-        if hasattr(src_gen_config, "pad_token_id") and src_gen_config["pad_token_id"] is not None
-        else src_gen_config["eos_token_id"][0]
-        if isinstance(src_gen_config["eos_token_id"], list)
-        else src_gen_config["eos_token_id"]
+        src_config["pad_token_id"]
+        if hasattr(src_config, "pad_token_id") and src_config["pad_token_id"] is not None
+        else src_config["eos_token_id"][0]
+        if isinstance(src_config["eos_token_id"], list)
+        else src_config["eos_token_id"]
     )
     genai_config["model"]["type"] = src_config.get("model_type", "")
     genai_config["model"]["vocab_size"] = src_config.get("vocab_size", -1)

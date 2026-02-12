@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Union
 
+from olive.common.utils import hardlink_copy_file
 from olive.hardware import AcceleratorSpec
 from olive.model import HfModelHandler, QairtModelHandler, QairtPreparedModelHandler
 from olive.passes import Pass
@@ -90,18 +91,14 @@ class QairtGenAIBuilder(Pass):
         # Can only set target and transformation configurations if the BE is HTP
         if config.backend == qairt.BackendType.HTP.value:
             gen_ai_builder.set_targets([config.soc_details])
-            # Set transformations configurations
-            # TODO - Should add these configurations to top-level Olive configuration, for now these are defaults
-            #gen_ai_builder.set_transformation_options(
-                #config=qairt.ModelTransformerConfig(
-                    #arn_cl_options=qairt.ARn_ContextLengthConfig(auto_regression_number=[1, 128]),
-                    #split_model=qairt.SplitModelConfig(
-                        #num_splits=4, split_lm_head=True, split_embedding=True
-                    #),
-                #),
-            #)
             gen_ai_builder._prepare_embedding_lut = False
 
         gen_ai_container = gen_ai_builder.build()
         gen_ai_container.save(output_model_path, exist_ok=True)
+
+        # QairtModelHandler requires the source model's config.json to be present
+        config_path = Path(model.model_path) / "config.json"
+        dest_path = Path(output_model_path)
+        hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
+
         return QairtModelHandler(model_path=output_model_path)
