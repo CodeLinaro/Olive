@@ -7,13 +7,7 @@ import onnxruntime
 import pytest
 import torch
 from packaging import version
-
-try:
-    # pydantic v2
-    from pydantic.v1.error_wrappers import ValidationError
-except ImportError:
-    # pydantic v1
-    from pydantic.error_wrappers import ValidationError
+from pydantic import ValidationError
 
 from olive.model import ONNXModelHandler
 from olive.passes.olive_pass import create_pass_from_dict
@@ -27,6 +21,9 @@ def get_onnx_matmul_model(model_path, model_attributes=None):
     pytorch_model = pytorch_model_loader(model_path=None)
     # need 3D input for MatMul, otherwise it will be converted to Gemm
     dummy_input = torch.randn(1, 1, 1)
+    # Use TorchScript export here because OnnxBnb4Quantization.quantized_modules feature
+    # relies on node names containing module names (e.g., "fc1"), which only works with TorchScript.
+    # Dynamo export produces generic node names like "node_MatMul_1".
     torch.onnx.export(
         pytorch_model,
         dummy_input,

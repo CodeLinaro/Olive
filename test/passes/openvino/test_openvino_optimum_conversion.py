@@ -4,9 +4,13 @@
 # --------------------------------------------------------------------------
 from pathlib import Path
 
+import pytest
+
 from olive.passes.olive_pass import create_pass_from_dict
 from olive.passes.openvino.optimum_intel import OpenVINOOptimumConversion
 from test.utils import get_hf_model
+
+pytestmark = pytest.mark.openvino
 
 
 def test_openvino_optimum_conversion_pass_convert_with_tokenizers(tmp_path):

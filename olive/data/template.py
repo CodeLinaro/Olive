@@ -39,14 +39,14 @@ def huggingface_data_config_template(model_name, task, **kwargs) -> DataConfig:
     **kwargs: dict
         Additional arguments:
         - olive.data.component.load_dataset_config.huggingface_dataset
-            - `data_name`: str, data name in huggingface dataset, e.g.: "glue", "squad"
+            - `data_name`: str, data name in huggingface dataset, e.g.: "nyu-mll/glue", "squad"
             - `subset`: str, subset of data, e.g.: "train", "validation", "test"
             - `split`: str, split of data, e.g.: "train", "validation", "test"
             - `data_files`: str | list | dict, path to source data file(s).
             e.g.
                 load_dataset_config={
                     "params": {
-                        "data_name": "glue",
+                        "data_name": "nyu-mll/glue",
                         "subset": "train",
                         "split": "train",
                         "data_files": "whatever.pt"
@@ -82,7 +82,7 @@ def huggingface_data_config_template(model_name, task, **kwargs) -> DataConfig:
     for component_config_name in ["pre_process_data_config", "post_process_data_config"]:
         component_config = kwargs.get(component_config_name) or {}
         if isinstance(component_config, DataComponentConfig):
-            component_config = component_config.dict()
+            component_config = component_config.model_dump()
         component_config["params"] = component_config.get("params") or {}
         component_config["params"].update({"model_name": model_name, "task": task})
         kwargs[component_config_name] = component_config

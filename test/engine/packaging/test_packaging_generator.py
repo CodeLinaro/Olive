@@ -52,7 +52,9 @@ def test_generate_zipfile_artifacts(mock_sys_getsizeof, save_as_external_data, m
         "evaluator": evaluator_config,
     }
     engine = Engine(**options)
-    engine.register(OnnxConversion, {"save_as_external_data": save_as_external_data})
+    # Use TorchScript because dynamo export creates models with strict input shape requirements
+    # that don't match the dummy data used for evaluation
+    engine.register(OnnxConversion, {"save_as_external_data": save_as_external_data, "use_dynamo_exporter": False})
 
     input_model_config = get_pytorch_model_config()
 
@@ -110,7 +112,7 @@ def test_generate_zipfile_artifacts_no_search(tmp_path):
         },
     }
     engine = Engine(**options)
-    engine.register(OnnxConversion)
+    engine.register(OnnxConversion, {"use_dynamo_exporter": True})
 
     input_model_config = get_pytorch_model_config()
 
@@ -153,13 +155,18 @@ def test_generate_zipfile_artifacts_mlflow(tmp_path):
         },
     }
     engine = Engine(**options)
-    engine.register(OnnxConversion)
+    engine.register(OnnxConversion, {"use_dynamo_exporter": True})
 
     input_model_config = get_pytorch_model_config()
 
     packaging_config = PackagingConfig()
     packaging_config.type = PackagingType.Zipfile
     packaging_config.name = "OutputModels"
+    # Initialize config with ZipfilePackagingConfig if it's None
+    if packaging_config.config is None:
+        from olive.engine.packaging.packaging_config import ZipfilePackagingConfig
+
+        packaging_config.config = ZipfilePackagingConfig()
     packaging_config.config.export_in_mlflow_format = True
 
     output_dir = tmp_path / "outputs"

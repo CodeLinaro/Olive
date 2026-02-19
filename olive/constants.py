@@ -58,6 +58,7 @@ class Precision(StrEnumBase):
 
 
 class PrecisionBits(IntEnum):
+    BITS2 = 2
     BITS4 = 4
     BITS8 = 8
     BITS16 = 16
@@ -107,6 +108,11 @@ class OpType(StrEnumBase):
     Div = "Div"
     Shape = "Shape"
     Constant = "Constant"
+    Custom = "custom"
+    PackedAttention = "PackedAttention"
+    PackedMultiHeadAttention = "PackedMultiHeadAttention"
+    MultiHeadAttention = "MultiHeadAttention"
+    Loop = "Loop"
 
 
 class AccuracyLevel(IntEnum):
@@ -115,6 +121,32 @@ class AccuracyLevel(IntEnum):
     fp16 = 2
     bf16 = 3
     int8 = 4
+
+
+class DiffusersModelVariant(StrEnumBase):
+    """Diffusion model variants."""
+
+    AUTO = "auto"
+    SD = "sd"
+    SDXL = "sdxl"
+    SD3 = "sd3"
+    FLUX = "flux"
+    SANA = "sana"
+
+
+class DiffusersComponent(StrEnumBase):
+    """Diffusers pipeline component names."""
+
+    TEXT_ENCODER = "text_encoder"
+    TEXT_ENCODER_2 = "text_encoder_2"
+    TEXT_ENCODER_3 = "text_encoder_3"
+    UNET = "unet"
+    TRANSFORMER = "transformer"
+    VAE_ENCODER = "vae_encoder"
+    VAE_DECODER = "vae_decoder"
+    FLUX_TRANSFORMER = "flux_transformer"
+    SD3_TRANSFORMER = "sd3_transformer"
+    SANA_TRANSFORMER = "sana_transformer"
 
 
 def precision_bits_from_precision(p):
