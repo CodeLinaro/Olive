@@ -89,8 +89,7 @@ class QairtPreparation(Pass):
         
         # Merge user-provided config
         if config.script_config:
-            logging.error("CONFIG SET ADDING CONFIGS")
-            script_config.update(config.config)
+            script_config.update(config.script_config)
 
         # Create temporary JSON config file
         with tempfile.NamedTemporaryFile(
@@ -104,29 +103,53 @@ class QairtPreparation(Pass):
             logger.info("Executing script %s", script_path)
             logger.debug("Script configuration: %s", script_config)
 
-            # Execute the preparation script
-            result = subprocess.run(
+            # Execute the preparation script with streaming output
+            process = subprocess.Popen(
                 ["python", str(script_path), "--config", config_file_path],
                 cwd=str(script_path.parent),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                check=False,
+                bufsize=1,  # Line buffered
             )
 
-            # Log script output
-            if result.stdout:
-                logger.debug("Script stdout:\n%s", result.stdout)
-            if result.stderr:
-                logger.debug("Script stderr:\n%s", result.stderr)
+            # Collect output for error reporting
+            stdout_lines = []
+            stderr_lines = []
+
+            # Stream stdout and stderr in real-time
+            while True:
+                # Read from stdout
+                stdout_line = process.stdout.readline()
+                if stdout_line:
+                    line = stdout_line.rstrip()
+                    logger.info(line)
+                    stdout_lines.append(line)
+
+                # Read from stderr
+                stderr_line = process.stderr.readline()
+                if stderr_line:
+                    line = stderr_line.rstrip()
+                    logger.debug(line)
+                    stderr_lines.append(line)
+
+                # Check if process has finished
+                if stdout_line == "" and stderr_line == "" and process.poll() is not None:
+                    break
+
+            # Wait for process to complete and get return code
+            returncode = process.wait()
 
             # Check for errors
-            if result.returncode != 0:
+            if returncode != 0:
+                stdout_text = "\n".join(stdout_lines)
+                stderr_text = "\n".join(stderr_lines)
                 error_msg = (
-                    f"QAIRT preparation script failed with exit code {result.returncode}.\n"
+                    f"QAIRT preparation script failed with exit code {returncode}.\n"
                     f"Script: {script_path}\n"
                     f"Working directory: {script_path.parent}\n"
-                    f"Stdout: {result.stdout}\n"
-                    f"Stderr: {result.stderr}"
+                    f"Stdout: {stdout_text}\n"
+                    f"Stderr: {stderr_text}"
                 )
                 raise RuntimeError(error_msg)
 
