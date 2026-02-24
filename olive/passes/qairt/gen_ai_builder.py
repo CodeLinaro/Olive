@@ -53,6 +53,13 @@ class QairtGenAIBuilder(Pass):
                 description="Log level to be used within underlying QAIRT components."
                 "Valid values: DEBUG, INFO, WARN, ERROR.",
             ),
+            "extra_args": PassConfigParam(
+                type_=dict,
+                required=False,
+                default_value={},
+                description="Extra arguments to pass to GenAIBuilder API. " \
+                "See QAIRT documentation for additional supported arguments. ",
+            ),
         }
 
     def _run_for_config(
@@ -91,14 +98,15 @@ class QairtGenAIBuilder(Pass):
         # Can only set target and transformation configurations if the BE is HTP
         if config.backend == qairt.BackendType.HTP.value:
             gen_ai_builder.set_targets([config.soc_details])
-            gen_ai_builder._prepare_embedding_lut = False
 
-        gen_ai_container = gen_ai_builder.build()
+        gen_ai_container = gen_ai_builder.build(extra_args=config.extra_args)
         gen_ai_container.save(output_model_path, exist_ok=True)
 
-        # QairtModelHandler requires the source model's config.json to be present
-        config_path = Path(model.model_path) / "config.json"
-        dest_path = Path(output_model_path)
-        hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
+        # QairtModelHandler requires certain source model files to be passed through
+        passthrough_files = ["config.json", "tokenizer.json"]
+        for file in passthrough_files:
+            config_path = Path(model.model_path) / file
+            dest_path = Path(output_model_path)
+            hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
 
         return QairtModelHandler(model_path=output_model_path)

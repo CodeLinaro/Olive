@@ -97,13 +97,9 @@ class QairtEncapsulation(Pass):
 
         container: qairt_genai.LLMContainer = qairt_genai.LLMContainer.load(model.model_path)
 
-        # NEED TO EXTRACT METADATA FROM CONTAINER FOR ONNX WRAPPING SCRIPT
-        # THIS IS SOMEWHAT COMPLICATED CAUSE IT DEPENDS ON THE NODE TYPE WE ARE USING FOR THIS MODEL, SHOULD BE ORT INPUTS
-
         # Input/Ouptut metadata
-        # TODO - Depending on export format the datatypes here may need to change
-        container.inputs = [("dummy_input", TensorProto.UINT32, [-1, -1, -1, -1])]
-        container.outputs = [("dummy_output", TensorProto.FLOAT, [-1, -1, -1, -1])]
+        container.inputs = [("input", TensorProto.INT32, ["batch_size", "sequence_length"])]
+        container.outputs = [("output", TensorProto.FLOAT, ["batch_size", 1, "vocab_size"])]
         
         input_info = {input[0]: (input[1], input[2]) for input in container.inputs}
 
@@ -118,8 +114,6 @@ class QairtEncapsulation(Pass):
         for (name, datatype, shape) in container.outputs:
             outputs.append(helper.make_tensor_value_info(name, datatype, shape))
 
-        # TODO - Should maybe separate this to a helper function so that different export formats can have their own functions
-        # Export the container 
         container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)  # Expect no binaries/libs but exported model
         # container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR_DLC)
 
@@ -147,7 +141,6 @@ class QairtEncapsulation(Pass):
             checker.check_model(model_def)
 
         # Save the model
-        # TODO - Need to derive a better name here from LLMContainer
         model_name = "model"
         context_model_output = f"{model_name}.onnx"
         context_model_output_dir = Path(output_model_path) / (context_model_output)
@@ -157,10 +150,12 @@ class QairtEncapsulation(Pass):
 
         save(model_def, context_model_output_dir)
 
-        # Source model configuration is required in output directory
-        config_path = Path(model.model_path) / "config.json"
-        dest_path = Path(output_model_path)
-        hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
+        # onnxruntime-genai requires certain source model files to be passed through
+        passthrough_files = ["config.json", "tokenizer.json"]
+        for file in passthrough_files:
+            config_path = Path(model.model_path) / file
+            dest_path = Path(output_model_path)
+            hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
 
         # generate the genai_config.json file for GenAI models
         create_genai_config(context_model_output, output_model_path, config)
@@ -172,11 +167,11 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
     """Generate the genai_config.json from the model config files.
 
     This is only for Generative AI models for which the config.json and generation_config.json files exist
-    Arguments:
-    @param model_name: name of model ONNX file that is generated
-    @param output_path: path to the output directory where the genai_config.json file will be created
-    @param config: pass configuration containing backend and other settings
-    @return: None
+    Args:
+        model_name: name of model ONNX file that is generated
+        output_path: path to the output directory where the genai_config.json file will be created
+        config: pass configuration containing backend and other settings
+        return: None
     """
     source_config_path = Path(output_path) / "config.json"
 
@@ -192,7 +187,7 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
                     "log_id": "onnxruntime-genai",
                     "graph_optimization_level": "ORT_DISABLE_ALL",
                     "provider_options": [
-                        {"QNN": {"backend_type": config.backend}}
+                        {"QNN": {"backend_type": config.backend}, "genai_model": "True"}
                     ],
                 },
                 "filename": "qairt_model.onnx",
