@@ -209,9 +209,28 @@ class QairtPreparation(Pass):
                 logger.info("Copying config.json from input model to output")
                 hardlink_copy_file(source_config_path, dest_config_path.parent, follow_symlinks=True)
 
-        # TODO(team): Add validation of output model format to ensure it meets QAIRT requirements
-        # For now, we trust the script produces valid output
-        # TODO
-        # copy necessary artifacts from output_dir at the end to Olive's output_model_path
+        # Output files expected by subsequent passes and produced by script
+        output_files_needed = [
+            "base/onnx/*.data",
+            "base/onnx/*.encodings",
+            "base/onnx/*.onnx",
+            "config.json", 
+            "tokenizer/tokenizer.json", 
+            "tokenizer/tokenizer_config.json"
+        ]
+
+        # Flatten directory structure: move files to output_model_path root
+        for file_pattern in output_files_needed:
+            source_pattern = output_dir_path / file_pattern
+            matching_files = list(source_pattern.parent.glob(source_pattern.name))
+            
+            if len(matching_files) == 0:
+                logger.warning(f"Expected file not found: {source_pattern}")
+            elif len(matching_files) > 1:
+                raise RuntimeError(f"Multiple files matched pattern {source_pattern}: {matching_files}")
+            else:
+                source_file = matching_files[0]
+                dest_file = output_model_path / source_file.name
+                hardlink_copy_file(source_file, dest_file.parent, follow_symlinks=True)
 
         return QairtPreparedModelHandler(model_path=output_model_path)
