@@ -43,9 +43,9 @@ class QairtGenAIBuilder(Pass):
             ),
             "cache_dir": PassConfigParam(
                 type_=str,
-                default_value=None,
+                default_value="./cache/qairt/gen_ai_builder",
                 description="Directory to be used as the cache directory for subsequent GenAIBuilder invocations."
-                "If no directory is set, the GenAIBuilder API will not cache any artifacts.",
+                "By default, saves to a similar location to the Olive cache.",
             ),
             "log_level": PassConfigParam(
                 type_=str,

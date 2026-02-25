@@ -47,6 +47,13 @@ class QairtPreparation(Pass):
                 description="Configuration dictionary to pass to the preparation script. "
                 "This will be merged with input_model_path and output_model_path in the JSON config file. "
                 "Example: {'precision': 'int8', 'calibration_samples': 100, 'backend': 'HTP'}",
+            ),
+            "cache_dir": PassConfigParam(
+                type_=str,
+                required=False,
+                default_value="./cache/qairt/preparation",
+                description="Directory to be used as the cache directory for subsequent QairtPreparation invocations."
+                "By default, saves to a similar location to the Olive cache.",
             )
         }
 
@@ -84,9 +91,11 @@ class QairtPreparation(Pass):
             raise ValueError(f"Script must be a Python file (.py), got: {script_path}")
 
         # Prepare configuration for the script
+        cache_dir_path = Path(config.cache_dir).resolve()
+        output_dir_path = cache_dir_path / "output"
         script_config = {
-            "input_model_path": str(Path(model.model_path).resolve()),
-            "output_model_path": str(Path(output_model_path).resolve()),
+            "CACHE_DIR": str(cache_dir_path),
+            "OUTPUT_DIR": str(output_dir_path)
         }
         
         # Merge user-provided config
@@ -202,5 +211,7 @@ class QairtPreparation(Pass):
 
         # TODO(team): Add validation of output model format to ensure it meets QAIRT requirements
         # For now, we trust the script produces valid output
+        # TODO
+        # copy necessary artifacts from output_dir at the end to Olive's output_model_path
 
         return QairtPreparedModelHandler(model_path=output_model_path)
