@@ -7,7 +7,9 @@ import json
 import logging
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
+from queue import Empty, Queue
 from typing import Union
 
 from olive.common.config_utils import ParamCategory
@@ -103,6 +105,13 @@ class QairtPreparation(Pass):
             logger.info("Executing script %s", script_path)
             logger.debug("Script configuration: %s", script_config)
 
+            # Helper function to read from pipe in a separate thread
+            def enqueue_output(pipe, queue):
+                """Read lines from pipe and put them in queue."""
+                for line in iter(pipe.readline, ''):
+                    queue.put(line)
+                pipe.close()
+
             # Execute the preparation script with streaming output
             process = subprocess.Popen(
                 ["python", str(script_path), "--config", config_file_path],
@@ -113,29 +122,42 @@ class QairtPreparation(Pass):
                 bufsize=1,  # Line buffered
             )
 
+            # Create queues for stdout and stderr
+            stdout_queue = Queue()
+            stderr_queue = Queue()
+
+            # Start threads to read from stdout and stderr concurrently
+            stdout_thread = threading.Thread(target=enqueue_output, args=(process.stdout, stdout_queue))
+            stderr_thread = threading.Thread(target=enqueue_output, args=(process.stderr, stderr_queue))
+            
+            stdout_thread.daemon = True
+            stderr_thread.daemon = True
+            stdout_thread.start()
+            stderr_thread.start()
+
             # Collect output for error reporting
             stdout_lines = []
             stderr_lines = []
 
-            # Stream stdout and stderr in real-time
-            while True:
-                # Read from stdout
-                stdout_line = process.stdout.readline()
-                if stdout_line:
+            # Stream stdout and stderr in real-time from queues
+            while process.poll() is None or not stdout_queue.empty() or not stderr_queue.empty():
+                # Try to read from stdout queue
+                try:
+                    stdout_line = stdout_queue.get_nowait()
                     line = stdout_line.rstrip()
                     logger.info(line)
                     stdout_lines.append(line)
-
-                # Read from stderr
-                stderr_line = process.stderr.readline()
-                if stderr_line:
+                except Empty:
+                    pass
+                
+                # Try to read from stderr queue
+                try:
+                    stderr_line = stderr_queue.get_nowait()
                     line = stderr_line.rstrip()
                     logger.debug(line)
                     stderr_lines.append(line)
-
-                # Check if process has finished
-                if stdout_line == "" and stderr_line == "" and process.poll() is not None:
-                    break
+                except Empty:
+                    pass
 
             # Wait for process to complete and get return code
             returncode = process.wait()
