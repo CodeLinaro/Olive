@@ -5,6 +5,7 @@
 
 import json
 import logging
+import re
 import subprocess
 import tempfile
 import threading
@@ -211,25 +212,34 @@ class QairtPreparation(Pass):
 
         # Output files expected by subsequent passes and produced by script
         output_files_needed = [
-            "base/onnx/*.data",
-            "base/onnx/*.encodings",
-            "base/onnx/*.onnx",
-            "config.json", 
-            "tokenizer/tokenizer.json", 
-            "tokenizer/tokenizer_config.json"
+            r"base/onnx/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.data)?$",
+            r"base/onnx/.*\.encodings$",
+            r"base/onnx/.*\.onnx$",
+            r"config\.json$", 
+            r"tokenizer/tokenizer\.json$", 
+            r"tokenizer/tokenizer_config\.json$"
         ]
 
         # Flatten directory structure: move files to output_model_path root
         for file_pattern in output_files_needed:
-            source_pattern = output_dir_path / file_pattern
-            matching_files = list(source_pattern.parent.glob(source_pattern.name))
+            # Split pattern into directory and filename regex
+            pattern_path = Path(file_pattern)
+            parent_dir = output_dir_path / pattern_path.parent
+            filename_regex = re.compile(pattern_path.name)
+            
+            # Find all matching files in the directory
+            if parent_dir.exists():
+                matching_files = [f for f in parent_dir.iterdir() if f.is_file() and filename_regex.match(f.name)]
+            else:
+                matching_files = []
             
             if len(matching_files) == 0:
-                logger.warning(f"Expected file not found: {source_pattern}")
+                logger.warning(f"Expected file not found matching pattern: {file_pattern}")
             elif len(matching_files) > 1:
-                raise RuntimeError(f"Multiple files matched pattern {source_pattern}: {matching_files}")
-            else:
-                source_file = matching_files[0]
+                logger.warning(f"Multiple files matched pattern {file_pattern}: {matching_files}")
+            
+            # Copy all matching files
+            for source_file in matching_files:
                 dest_file = output_model_path / source_file.name
                 hardlink_copy_file(source_file, dest_file.parent, follow_symlinks=True)
 
