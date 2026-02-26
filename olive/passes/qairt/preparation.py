@@ -194,22 +194,6 @@ class QairtPreparation(Pass):
             except Exception as e:
                 logger.warning("Failed to delete temporary config file %s: %s", config_file_path, e)
 
-        # Verify output exists
-        output_path = Path(output_model_path)
-        if not output_path.exists():
-            raise RuntimeError(
-                f"Script completed but output model not found at: {output_model_path}. "
-                "The preparation script may not have created the expected output."
-            )
-
-        # Ensure config.json is present in output (copy from input if needed)
-        source_config_path = Path(model.model_path) / "config.json"
-        if source_config_path.exists():
-            dest_config_path = output_path / "config.json" if output_path.is_dir() else output_path.parent / "config.json"
-            if not dest_config_path.exists():
-                logger.info("Copying config.json from input model to output")
-                hardlink_copy_file(source_config_path, dest_config_path.parent, follow_symlinks=True)
-
         # Output files expected by subsequent passes and produced by script
         output_files_needed = [
             r"base/onnx/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.data)?$",
@@ -240,7 +224,7 @@ class QairtPreparation(Pass):
             
             # Copy all matching files
             for source_file in matching_files:
-                dest_file = output_model_path / source_file.name
+                dest_file = Path(output_model_path) / source_file.name
                 hardlink_copy_file(source_file, dest_file.parent, follow_symlinks=True)
 
         return QairtPreparedModelHandler(model_path=output_model_path)
