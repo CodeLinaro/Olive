@@ -197,7 +197,7 @@ class QairtPreparation(Pass):
         # Output files expected by subsequent passes and produced by script
         output_files_needed = [
             r"base/onnx/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.data)?$",
-            r"base/onnx/.*\.encodings$",
+            r"base/onnx/.*\base.encodings$",
             r"base/onnx/.*\.onnx$",
             r"config\.json$", 
             r"tokenizer/tokenizer\.json$", 

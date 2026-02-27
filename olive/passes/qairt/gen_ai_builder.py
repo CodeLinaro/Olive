@@ -103,7 +103,7 @@ class QairtGenAIBuilder(Pass):
         gen_ai_container.save(output_model_path, exist_ok=True)
 
         # QairtModelHandler requires certain source model files to be passed through
-        passthrough_files = ["config.json", "tokenizer.json"]
+        passthrough_files = ["config.json", "tokenizer.json", "tokenizer_config.json"]
         for file in passthrough_files:
             config_path = Path(model.model_path) / file
             dest_path = Path(output_model_path)
