@@ -114,8 +114,7 @@ class QairtEncapsulation(Pass):
         for (name, datatype, shape) in container.outputs:
             outputs.append(helper.make_tensor_value_info(name, datatype, shape))
 
-        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)  # Expect no binaries/libs but exported model
-        # container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR_DLC)
+        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)
 
         context_node = helper.make_node(
             "EPContext",
@@ -182,7 +181,7 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
         "model": {
             "bos_token_id": -1,
             "context_length": -1,
-            "lm_executor": {
+            "decoder": {
                 "session_options": {
                     "log_id": "onnxruntime-genai",
                     "graph_optimization_level": "ORT_DISABLE_ALL",
@@ -213,7 +212,7 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
             "no_repeat_ngram_size": 0,
             "num_beams": 1,
             "num_return_sequences": 1,
-            "past_present_share_buffer": False,
+            "past_present_share_buffer": True,
             "repetition_penalty": 1.0,
             "temperature": 1.0,
             "top_k": 1,
