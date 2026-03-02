@@ -241,22 +241,22 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
 
     genai_config["model"]["bos_token_id"] = src_config.get("bos_token_id", -1)
     genai_config["model"]["context_length"] = src_config.get("max_position_embeddings", -1)
-    genai_config["model"]["lm_executor"]["filename"] = model_name
-    genai_config["model"]["lm_executor"]["head_size"] = src_config.get("hidden_size", -1) // src_config.get(
+    genai_config["model"]["decoder"]["filename"] = model_name
+    genai_config["model"]["decoder"]["head_size"] = src_config.get("hidden_size", -1) // src_config.get(
         "num_attention_heads", -1
     )
-    genai_config["model"]["lm_executor"]["hidden_size"] = src_config.get("hidden_size", -1)
+    genai_config["model"]["decoder"]["hidden_size"] = src_config.get("hidden_size", -1)
 
     for name in inputs:
         if name != "beam_idx":
-            genai_config["model"]["lm_executor"]["inputs"].update({name: name})
+            genai_config["model"]["decoder"]["inputs"].update({name: name})
 
     for name in outputs:
-        genai_config["model"]["lm_executor"]["outputs"].update({name: name})
+        genai_config["model"]["decoder"]["outputs"].update({name: name})
 
-    genai_config["model"]["lm_executor"]["num_attention_heads"] = src_config.get("num_attention_heads", -1)
-    genai_config["model"]["lm_executor"]["num_hidden_layers"] = src_config.get("num_hidden_layers", -1)
-    genai_config["model"]["lm_executor"]["num_key_value_heads"] = src_config.get("num_key_value_heads", -1)
+    genai_config["model"]["decoder"]["num_attention_heads"] = src_config.get("num_attention_heads", -1)
+    genai_config["model"]["decoder"]["num_hidden_layers"] = src_config.get("num_hidden_layers", -1)
+    genai_config["model"]["decoder"]["num_key_value_heads"] = src_config.get("num_key_value_heads", -1)
 
     genai_config["model"]["eos_token_id"] = src_config.get("eos_token_id", -1)
     genai_config["model"]["pad_token_id"] = (
