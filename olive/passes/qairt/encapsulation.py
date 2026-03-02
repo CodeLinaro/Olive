@@ -1,6 +1,6 @@
 # -------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License.
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
 # --------------------------------------------------------------------------
 
 import logging
@@ -18,6 +18,9 @@ from olive.hardware.accelerator import AcceleratorSpec, Device
 from olive.model import ONNXModelHandler, QairtModelHandler
 from olive.passes import Pass
 from olive.passes.pass_config import BasePassConfig, PassConfigParam
+
+import qairt
+import qairt.gen_ai_api as qairt_genai
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +90,6 @@ class QairtEncapsulation(Pass):
         config: type[BasePassConfig],
         output_model_path: str,
     ) -> ONNXModelHandler:
-        # Attempt to import QAIRT Python API - if not present, something is probably wrong with user setup
-        try:
-            import qairt
-            import qairt.gen_ai_api as qairt_genai
-        except ImportError:
-            raise ImportError("Please install olive-ai[qairt] to use QAIRT models.")
-        
 
         container: qairt_genai.LLMContainer = qairt_genai.LLMContainer.load(model.model_path)
 
@@ -173,7 +169,11 @@ class QairtEncapsulation(Pass):
         for file in passthrough_files:
             config_path = Path(model.model_path) / file
             dest_path = Path(output_model_path)
-            hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
+            # TODO Remove once we have NB1 scripts for all models
+            try:
+                hardlink_copy_file(config_path, dest_path, follow_symlinks=True)
+            except:
+                pass
 
         # generate the genai_config.json file for GenAI models
         create_genai_config(context_model_output, output_model_path, config)

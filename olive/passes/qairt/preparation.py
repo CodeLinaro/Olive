@@ -1,6 +1,6 @@
 # -------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License.
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
 # --------------------------------------------------------------------------
 
 import json
@@ -19,6 +19,9 @@ from olive.hardware.accelerator import AcceleratorSpec
 from olive.model import HfModelHandler, QairtPreparedModelHandler
 from olive.passes import Pass
 from olive.passes.pass_config import BasePassConfig, PassConfigParam
+
+import qairt
+import qairt.gen_ai_api as qairt_genai
 
 logger = logging.getLogger(__name__)
 
