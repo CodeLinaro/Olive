@@ -114,7 +114,26 @@ class QairtEncapsulation(Pass):
         for (name, datatype, shape) in container.outputs:
             outputs.append(helper.make_tensor_value_info(name, datatype, shape))
 
-        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)
+        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR_DLC)
+
+        # Find the .dlc file in the output directory
+        output_path_obj = Path(output_model_path)
+        dlc_files = list(output_path_obj.glob("*.dlc"))
+        
+        if not dlc_files:
+            raise FileNotFoundError(
+                f"No .dlc file found in {output_model_path} after export. "
+                "Expected at least one .dlc file to be generated."
+            )
+        
+        if len(dlc_files) > 1:
+            logger.warning(
+                f"Multiple .dlc files found in {output_model_path}: {[f.name for f in dlc_files]}. "
+                f"Using the first one: {dlc_files[0].name}"
+            )
+        
+        dlc_filename = dlc_files[0].name
+        logger.info(f"Found DLC file: {dlc_filename}")
 
         context_node = helper.make_node(
             "EPContext",
@@ -124,8 +143,8 @@ class QairtEncapsulation(Pass):
             domain="com.microsoft",
         )
 
-        context_node.attribute.extend([helper.make_attribute("ep_context_type", "zip")])
-        context_node.attribute.extend([helper.make_attribute("ep_zip_context", "model.zip")])
+        context_node.attribute.extend([helper.make_attribute("ep_context_type", "dlc")])
+        context_node.attribute.extend([helper.make_attribute("ep_dlc_context", dlc_filename)])
         context_node.attribute.extend([helper.make_attribute("source", "QAIRTExport")])
 
         # Create the ONNX Graph
