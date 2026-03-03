@@ -96,10 +96,9 @@ class QairtPreparation(Pass):
 
         # Prepare configuration for the script
         cache_dir_path = Path(config.cache_dir).resolve()
-        output_dir_path = cache_dir_path / "output"
         script_config = {
             "CACHE_DIR": str(cache_dir_path),
-            "OUTPUT_DIR": str(output_dir_path)
+            "OUTPUT_DIR": str(output_model_path)
         }
         
         # Merge user-provided config
@@ -196,38 +195,5 @@ class QairtPreparation(Pass):
                 Path(config_file_path).unlink()
             except Exception as e:
                 logger.warning("Failed to delete temporary config file %s: %s", config_file_path, e)
-
-        # Output files expected by subsequent passes and produced by script
-        output_files_needed = [
-            r"base/onnx/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.data)?$",
-            r"base/onnx/.*\base.encodings$",
-            r"base/onnx/.*\.onnx$",
-            r"config\.json$", 
-            r"tokenizer/tokenizer\.json$", 
-            r"tokenizer/tokenizer_config\.json$"
-        ]
-
-        # Flatten directory structure: move files to output_model_path root
-        for file_pattern in output_files_needed:
-            # Split pattern into directory and filename regex
-            pattern_path = Path(file_pattern)
-            parent_dir = output_dir_path / pattern_path.parent
-            filename_regex = re.compile(pattern_path.name)
-            
-            # Find all matching files in the directory
-            if parent_dir.exists():
-                matching_files = [f for f in parent_dir.iterdir() if f.is_file() and filename_regex.match(f.name)]
-            else:
-                matching_files = []
-            
-            if len(matching_files) == 0:
-                logger.warning(f"Expected file not found matching pattern: {file_pattern}")
-            elif len(matching_files) > 1:
-                logger.warning(f"Multiple files matched pattern {file_pattern}: {matching_files}")
-            
-            # Copy all matching files
-            for source_file in matching_files:
-                dest_file = Path(output_model_path) / source_file.name
-                hardlink_copy_file(source_file, dest_file.parent, follow_symlinks=True)
 
         return QairtPreparedModelHandler(model_path=output_model_path)
