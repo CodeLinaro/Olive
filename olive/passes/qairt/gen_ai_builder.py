@@ -115,7 +115,7 @@ class QairtGenAIBuilder(Pass):
             raise ValueError("QAIRT HTP GenAIBuilder can only consume QairtPreparedModelHandler")
 
         gen_ai_builder = qairt_genai.GenAIBuilderFactory.create(
-            pretrained_model_path=Path(model.model_path) / "base", 
+            pretrained_model_path=Path(model.model_path) / "base" / "onnx",
             backend_type=config.backend,
             cache_root=config.cache_dir,
             tokenizer_path=Path(model.model_path) / "tokenizer",
