@@ -115,10 +115,11 @@ class QairtGenAIBuilder(Pass):
             raise ValueError("QAIRT HTP GenAIBuilder can only consume QairtPreparedModelHandler")
 
         gen_ai_builder = qairt_genai.GenAIBuilderFactory.create(
-            pretrained_model_path=Path(model.model_path), 
-            backend_type=config.backend, 
+            pretrained_model_path=Path(model.model_path) / "base", 
+            backend_type=config.backend,
             cache_root=config.cache_dir,
-            tokenizer_path=Path(model.model_path) / "tokenizer"
+            tokenizer_path=Path(model.model_path) / "tokenizer",
+            config_path=Path(model.model_path)
         )
 
         # Embedding LUT is unsupported for now
@@ -131,7 +132,7 @@ class QairtGenAIBuilder(Pass):
             if config.num_splits != -1:
                 gen_ai_builder._transformation_config.model_transformer_config.split_model.num_splits = config.num_splits
 
-        gen_ai_container = gen_ai_builder.build(tokenizer_path=Path(model.model_path) / "tokenizer")
+        gen_ai_container = gen_ai_builder.build()
         gen_ai_container.save(output_model_path, exist_ok=True)
 
         # QairtModelHandler requires certain source model files to be passed through
