@@ -133,6 +133,14 @@ class QairtGenAIBuilder(Pass):
                 gen_ai_builder._transformation_config.model_transformer_config.split_model.num_splits = config.num_splits
 
         gen_ai_container = gen_ai_builder.build()
+
+        # Handling of UDMA on LLMContainer
+        #if config.backend == qairt.BackendType.HTP.value:
+            # TODO fix index issue here where index should map to index
+            #htp_version = gen_ai_container._backend_extensions_config.device_custom_configs[0].dsp_arch
+            #if htp_version >= "v81":
+                #gen_ai_builder._backend_extensions_config.context_custom_configs[0].extended_udma = True
+
         gen_ai_container.save(output_model_path, exist_ok=True)
 
         # QairtModelHandler requires certain source model files to be passed through
