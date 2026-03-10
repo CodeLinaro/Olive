@@ -94,8 +94,8 @@ class QairtEncapsulation(Pass):
         container: qairt_genai.LLMContainer = qairt_genai.LLMContainer.load(model.model_path)
 
         # Input/Ouptut metadata
-        container.inputs = [("input", TensorProto.INT32, ["batch_size", "sequence_length"])]
-        container.outputs = [("output", TensorProto.FLOAT, ["batch_size", 1, "vocab_size"])]
+        container.inputs = [("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])]
+        container.outputs = [("logits", TensorProto.FLOAT, ["batch_size", 1, "vocab_size"])]
         
         input_info = {input[0]: (input[1], input[2]) for input in container.inputs}
 
@@ -110,7 +110,7 @@ class QairtEncapsulation(Pass):
         for (name, datatype, shape) in container.outputs:
             outputs.append(helper.make_tensor_value_info(name, datatype, shape))
 
-        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR_DLC)
+        container.export(output_model_path, export_format=qairt.ExportFormat.LM_EXECUTOR)
 
         # Find the .dlc file in the output directory
         output_path_obj = Path(output_model_path)
@@ -267,8 +267,7 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
     genai_config["model"]["decoder"]["hidden_size"] = src_config.get("hidden_size", -1)
 
     for name in inputs:
-        if name != "beam_idx":
-            genai_config["model"]["decoder"]["inputs"].update({name: name})
+        genai_config["model"]["decoder"]["inputs"].update({name: name})
 
     for name in outputs:
         genai_config["model"]["decoder"]["outputs"].update({name: name})
