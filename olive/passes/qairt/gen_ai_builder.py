@@ -117,9 +117,7 @@ class QairtGenAIBuilder(Pass):
         gen_ai_builder = qairt_genai.GenAIBuilderFactory.create(
             pretrained_model_path=Path(model.model_path) / "base" / "onnx",
             backend_type=config.backend,
-            cache_root=config.cache_dir,
-            tokenizer_path=Path(model.model_path) / "tokenizer",
-            config_path=Path(model.model_path)
+            cache_root=config.cache_dir
         )
 
         # Embedding LUT is unsupported for now
