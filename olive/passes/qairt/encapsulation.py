@@ -165,7 +165,12 @@ class QairtEncapsulation(Pass):
         save(model_def, context_model_output_dir)
 
         # onnxruntime-genai requires certain source model files to be passed through
-        passthrough_files = ["config.json", "tokenizer.json", "tokenizer_config.json"]
+        passthrough_files = [
+            "config.json",
+            "generation_config.json",
+            "tokenizer.json",
+            "tokenizer_config.json"
+        ]
         for file in passthrough_files:
             config_path = Path(model.model_path) / file
             dest_path = Path(output_model_path)
@@ -195,6 +200,11 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
 
     if not source_config_path.exists():
         raise ValueError("Cannot create gen_ai_config.json if source model config doesn't exist.")
+
+    generation_config_path = Path(output_path) / "generation_config.json"
+
+    if not generation_config_path.exists():
+        raise ValueError("Cannot create gen_ai_config.json if generation config doesn't exist")
 
     genai_config = {
         "model": {
@@ -244,6 +254,9 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
     with open(source_config_path) as f:
         src_config = json.load(f)
 
+    with open(generation_config_path) as f:
+        gen_config = json.load(f)
+
     try:
         import onnx
     except ImportError:
@@ -276,13 +289,13 @@ def create_genai_config(model_name: str, output_path: str, config: type[BasePass
     genai_config["model"]["decoder"]["num_hidden_layers"] = src_config.get("num_hidden_layers", -1)
     genai_config["model"]["decoder"]["num_key_value_heads"] = src_config.get("num_key_value_heads", -1)
 
-    genai_config["model"]["eos_token_id"] = src_config.get("eos_token_id", -1)
+    genai_config["model"]["eos_token_id"] = gen_config.get("eos_token_id", -1)
     genai_config["model"]["pad_token_id"] = (
-        src_config["pad_token_id"]
-        if hasattr(src_config, "pad_token_id") and src_config["pad_token_id"] is not None
-        else src_config["eos_token_id"][0]
-        if isinstance(src_config["eos_token_id"], list)
-        else src_config["eos_token_id"]
+        gen_config["pad_token_id"]
+        if hasattr(gen_config, "pad_token_id") and gen_config["pad_token_id"] is not None
+        else gen_config["eos_token_id"][0]
+        if isinstance(gen_config["eos_token_id"], list)
+        else gen_config["eos_token_id"]
     )
     genai_config["model"]["type"] = src_config.get("model_type", "")
     genai_config["model"]["vocab_size"] = src_config.get("vocab_size", -1)
