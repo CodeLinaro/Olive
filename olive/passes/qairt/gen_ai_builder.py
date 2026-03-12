@@ -58,6 +58,11 @@ class QairtGenAIBuilder(Pass):
                 " This option will be ignored if any device custom configurations are set."
                 "e.g. 'chipset:chipset:SC8380XP', 'dsp_arch:v73;soc_model:60' ",
             ),
+            "extended_udma": PassConfigParam(
+                type_=bool,
+                default_value=False,
+                description="Improves performance at the cost of memory by using UDMA. HTP only."
+            ),
             # Model configs
             "multi_graph": PassConfigParam(
                 type_=bool,
@@ -88,6 +93,9 @@ class QairtGenAIBuilder(Pass):
                 return False
             if config.num_splits != -1:
                 logger.error("num_splits is unsupported on non-HTP backends")
+                return False
+            if config.extended_udma:
+                logger.error("extended_udma is unsupported on non-HTP backends")
                 return False
         
         return True
@@ -132,15 +140,16 @@ class QairtGenAIBuilder(Pass):
             if config.num_splits != -1:
                 gen_ai_builder._transformation_config.model_transformer_config.split_model.num_splits = config.num_splits
 
+            # Enable UDMA by default on v81+ architectures?
+            if config.extended_udma:
+                dev_cfg = gen_ai_builder._backend_extensions_config.device_custom_configs[0]
+                arch_version = int(str(dev_cfg.dsp_arch).lstrip("v"))
+                if arch_version >= 81:
+                    gen_ai_builder._backend_extensions_config.context_custom_configs[0].extended_udma = True
+                else:
+                    raise ValueError("extended_udma is unsupported on DSP architectures less than v81")
+
         gen_ai_container = gen_ai_builder.build()
-
-        # Handling of UDMA on LLMContainer
-        #if config.backend == qairt.BackendType.HTP.value:
-            # TODO fix index issue here where index should map to index
-            #htp_version = gen_ai_container._backend_extensions_config.device_custom_configs[0].dsp_arch
-            #if htp_version >= "v81":
-                #gen_ai_builder._backend_extensions_config.context_custom_configs[0].extended_udma = True
-
         gen_ai_container.save(output_model_path, exist_ok=True)
 
         # QairtModelHandler requires certain source model files to be passed through
