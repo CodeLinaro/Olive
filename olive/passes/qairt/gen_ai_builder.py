@@ -142,10 +142,10 @@ class QairtGenAIBuilder(Pass):
 
             # Enable UDMA by default on v81+ architectures?
             if config.extended_udma:
-                dev_cfg = gen_ai_builder._backend_extensions_config.device_custom_configs[0]
+                dev_cfg = gen_ai_builder._compilation_config.device_custom_configs[0]
                 arch_version = int(str(dev_cfg.dsp_arch).lstrip("v"))
                 if arch_version >= 81:
-                    gen_ai_builder._backend_extensions_config.context_custom_configs[0].extended_udma = True
+                    gen_ai_builder._compilation_config.device_custom_configs[0].extended_udma = True
                 else:
                     raise ValueError("extended_udma is unsupported on DSP architectures less than v81")
 
