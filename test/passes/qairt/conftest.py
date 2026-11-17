@@ -78,10 +78,10 @@ def mock_qairt_modules_fixture():
 
     yield {"qairt": mock_qairt, "gen_ai_api": mock_gen_ai_api, "genie_config": mock_genie_config}
 
-    # Teardown
-    patcher_qairt.stop()
-    patcher_gen_ai.stop()
+    # Teardown in reverse start order so each stop() restores a clean snapshot.
     patcher_genie_config.stop()
+    patcher_gen_ai.stop()
+    patcher_qairt.stop()
 
 
 @pytest.fixture(name="mock_hf_model")

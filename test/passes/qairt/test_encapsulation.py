@@ -966,9 +966,7 @@ def test_encapsulation_no_backend_extensions_overrides_leaves_config_untouched(
 
 
 def test_encapsulation_engine_config_overrides_applied_when_supported(tmp_path, mock_qairt_model, mock_qairt_modules):
-    """engine_config_overrides is passed to export() when the installed qairt supports it."""
-    import inspect
-
+    """engine_config_overrides is passed to export() when qairt-dev >= 0.8.0."""
     output_path = tmp_path / "output"
     output_path.mkdir(parents=True, exist_ok=True)
     model_path = Path(mock_qairt_model.model_path)
@@ -986,13 +984,11 @@ def test_encapsulation_engine_config_overrides_applied_when_supported(tmp_path, 
     mock_container.export = MagicMock(side_effect=mock_export)
     mock_qairt_modules["gen_ai_api"].LLMContainer.load.return_value = mock_container
 
-    fake_sig = inspect.signature(mock_export)
-
     with (
         patch("olive.passes.qairt.encapsulation.helper"),
         patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
         patch("olive.passes.qairt.encapsulation.checker"),
-        patch("olive.passes.qairt.encapsulation.inspect.signature", return_value=fake_sig),
+        patch("olive.passes.qairt.utils.importlib.metadata.version", return_value="0.14.1"),
     ):
         fake_engine_cfg = MagicMock()
         mock_qairt_modules["gen_ai_api"].EngineConfig.return_value = fake_engine_cfg
@@ -1015,8 +1011,6 @@ def test_encapsulation_engine_config_overrides_applied_when_supported(tmp_path, 
 
 def test_encapsulation_engine_config_overrides_without_htp(tmp_path, mock_qairt_model, mock_qairt_modules):
     """engine_config_overrides without an 'htp' key constructs EngineConfig with htp=None."""
-    import inspect
-
     output_path = tmp_path / "output"
     output_path.mkdir(parents=True, exist_ok=True)
     model_path = Path(mock_qairt_model.model_path)
@@ -1034,13 +1028,11 @@ def test_encapsulation_engine_config_overrides_without_htp(tmp_path, mock_qairt_
     mock_container.export = MagicMock(side_effect=mock_export)
     mock_qairt_modules["gen_ai_api"].LLMContainer.load.return_value = mock_container
 
-    fake_sig = inspect.signature(mock_export)
-
     with (
         patch("olive.passes.qairt.encapsulation.helper"),
         patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
         patch("olive.passes.qairt.encapsulation.checker"),
-        patch("olive.passes.qairt.encapsulation.inspect.signature", return_value=fake_sig),
+        patch("olive.passes.qairt.utils.importlib.metadata.version", return_value="0.14.1"),
     ):
         fake_engine_cfg = MagicMock()
         mock_qairt_modules["gen_ai_api"].EngineConfig.return_value = fake_engine_cfg
@@ -1061,9 +1053,7 @@ def test_encapsulation_engine_config_overrides_without_htp(tmp_path, mock_qairt_
 def test_encapsulation_engine_config_overrides_skipped_when_not_supported(
     tmp_path, mock_qairt_model, mock_qairt_modules
 ):
-    """engine_config_overrides is ignored with a warning when export() has no engine_config param."""
-    import inspect
-
+    """engine_config_overrides is ignored with a warning when qairt-dev < 0.8.0."""
     output_path = tmp_path / "output"
     output_path.mkdir(parents=True, exist_ok=True)
     model_path = Path(mock_qairt_model.model_path)
@@ -1081,13 +1071,11 @@ def test_encapsulation_engine_config_overrides_skipped_when_not_supported(
     mock_container.export = MagicMock(side_effect=mock_export_old)
     mock_qairt_modules["gen_ai_api"].LLMContainer.load.return_value = mock_container
 
-    fake_sig = inspect.signature(mock_export_old)
-
     with (
         patch("olive.passes.qairt.encapsulation.helper"),
         patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
         patch("olive.passes.qairt.encapsulation.checker"),
-        patch("olive.passes.qairt.encapsulation.inspect.signature", return_value=fake_sig),
+        patch("olive.passes.qairt.utils.importlib.metadata.version", return_value="0.7.0"),
         patch("olive.passes.qairt.encapsulation.logger") as mock_logger,
     ):
         encap_pass = create_pass_from_dict(
