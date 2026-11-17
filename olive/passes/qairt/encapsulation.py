@@ -4,8 +4,6 @@
 # --------------------------------------------------------------------------
 
 import copy
-import importlib.metadata
-import inspect
 import logging
 import os
 from pathlib import Path
@@ -20,20 +18,11 @@ from olive.hardware.accelerator import AcceleratorSpec
 from olive.model import ONNXModelHandler, QairtModelHandler
 from olive.passes import Pass
 from olive.passes.pass_config import BasePassConfig, PassConfigParam
-from olive.passes.qairt.utils import QairtLogLevel
+from olive.passes.qairt.utils import QairtLogLevel, qairt_dev_version_at_least
 
 logger = logging.getLogger(__name__)
 
 MAX_GENIE_CONTEXT_LENGTH = 4096
-
-
-def _supports_multi_use_case_export() -> bool:
-    """Return True when the installed qairt-dev supports dual DIALOG+LM_EXECUTOR export (>= 0.15.0.dev0)."""
-    try:
-        qairt_dev_version = Version(importlib.metadata.version("qairt-dev"))
-        return qairt_dev_version >= Version("0.15.0.dev0")
-    except importlib.metadata.PackageNotFoundError:
-        return False
 
 
 def _deep_merge(base: dict, overrides: dict) -> dict:
@@ -186,7 +175,7 @@ class QairtEncapsulation(Pass):
         for name, datatype, shape in container.outputs:
             outputs.append(helper.make_tensor_value_info(name, datatype, shape))
 
-        if _supports_multi_use_case_export():
+        if qairt_dev_version_at_least("0.15.0.dev0"):
             from qairt.modules.genie_execution.genie_config import ExportUseCase
 
             executor_kwargs = {"engine_config": engine_cfg} if engine_cfg is not None else {}
@@ -199,14 +188,7 @@ class QairtEncapsulation(Pass):
         else:
             export_kwargs = {"export_format": qairt.ExportFormat.LM_EXECUTOR}
             if engine_cfg is not None:
-                try:
-                    sig = inspect.signature(container.export).parameters
-                    supports_engine_config = "engine_config" in sig or any(
-                        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.values()
-                    )
-                except (TypeError, ValueError):
-                    supports_engine_config = False
-                if supports_engine_config:
+                if qairt_dev_version_at_least("0.8.0"):
                     export_kwargs["engine_config"] = engine_cfg
                 else:
                     logger.warning(
@@ -214,7 +196,6 @@ class QairtEncapsulation(Pass):
                         "the engine_config parameter in LLMContainer.export(). "
                         "Upgrade to a newer version of qairt-dev to enable this parameter."
                     )
-
             container.export(output_model_path, **export_kwargs)
 
         # Find the .dlc file in the output directory

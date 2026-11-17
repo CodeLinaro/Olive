@@ -1135,7 +1135,7 @@ def test_encapsulation_multi_use_case_export_when_qairt_dev_supports_it(
         patch("olive.passes.qairt.encapsulation.helper"),
         patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
         patch("olive.passes.qairt.encapsulation.checker"),
-        patch("olive.passes.qairt.encapsulation.importlib.metadata.version", return_value="0.15.0"),
+        patch("olive.passes.qairt.utils.importlib.metadata.version", return_value="0.15.0"),
     ):
         encap_pass = create_pass_from_dict(QairtEncapsulation, {}, disable_search=True)
         result = encap_pass.run(mock_qairt_model, str(output_path))
@@ -1181,7 +1181,7 @@ def test_encapsulation_multi_use_case_export_passes_engine_config(tmp_path, mock
         patch("olive.passes.qairt.encapsulation.helper"),
         patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
         patch("olive.passes.qairt.encapsulation.checker"),
-        patch("olive.passes.qairt.encapsulation.importlib.metadata.version", return_value="0.15.0"),
+        patch("olive.passes.qairt.utils.importlib.metadata.version", return_value="0.15.0"),
     ):
         encap_pass = create_pass_from_dict(
             QairtEncapsulation,
@@ -1217,7 +1217,7 @@ def test_encapsulation_fallback_export_when_qairt_dev_too_old(
             patch("olive.passes.qairt.encapsulation.helper"),
             patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
             patch("olive.passes.qairt.encapsulation.checker"),
-            patch("olive.passes.qairt.encapsulation.importlib.metadata.version", return_value=version),
+            patch("olive.passes.qairt.utils.importlib.metadata.version", return_value=version),
         ):
             encap_pass = create_pass_from_dict(QairtEncapsulation, {}, disable_search=True)
             result = encap_pass.run(mock_qairt_model, str(output_path))
@@ -1245,7 +1245,7 @@ def test_encapsulation_fallback_export_when_qairt_dev_not_installed(
         patch("olive.passes.qairt.encapsulation.save", side_effect=lambda _m, p: _make_minimal_onnx(p)),
         patch("olive.passes.qairt.encapsulation.checker"),
         patch(
-            "olive.passes.qairt.encapsulation.importlib.metadata.version",
+            "olive.passes.qairt.utils.importlib.metadata.version",
             side_effect=importlib.metadata.PackageNotFoundError,
         ),
     ):
