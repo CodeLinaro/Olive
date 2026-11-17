@@ -160,7 +160,11 @@ class QairtPipelinePass(Pass):
         stages_raw = recipe_data.get("stages", {})
         if isinstance(stages_raw, list):
             genai_builder_cfg = next(
-                (next(iter(s.values())) for s in stages_raw if isinstance(s, dict) and next(iter(s)) == "genai_builder"),
+                (
+                    next(iter(s.values()))
+                    for s in stages_raw
+                    if isinstance(s, dict) and next(iter(s)) == "genai_builder"
+                ),
                 {},
             )
         else:
