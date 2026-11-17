@@ -1111,7 +1111,7 @@ def test_encapsulation_engine_config_overrides_skipped_when_not_supported(
 def test_encapsulation_multi_use_case_export_when_qairt_dev_supports_it(
     tmp_path, mock_qairt_model, mock_qairt_modules, mock_container
 ):
-    """qairt-dev > 0.14.0 exports DIALOG + LM_EXECUTOR into one DLC via T2TExecutor."""
+    """qairt-dev >= 0.15.0.dev0 exports DIALOG + LM_EXECUTOR into one DLC via T2TExecutor."""
     output_path = tmp_path / "output"
     output_path.mkdir(parents=True, exist_ok=True)
 
