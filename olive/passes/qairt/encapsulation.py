@@ -28,13 +28,25 @@ MAX_GENIE_CONTEXT_LENGTH = 4096
 
 
 def _supports_multi_use_case_export() -> bool:
-    """Return True when the installed qairt-dev package can export DIALOG + LM_EXECUTOR into one DLC."""
+    """Return True when the installed qairt-dev supports dual DIALOG+LM_EXECUTOR export.
+
+    Requires >= 0.15.0.dev0. The entire 0.14.x line contains a revert that changes how the
+    HTP BE extension is handled (placed alongside the DLC instead of embedded). The dual
+    use-case export path uses an intersection across use cases to decide what to skip from
+    DLC embedding, which interacts incorrectly with that revert — DIALOG's empty
+    artifacts_to_place_alongside prevents the BE extension from being excluded from the DLC,
+    so it ends up both embedded and placed alongside.
+    """
     try:
         from qairt.modules.genie_execution.genie_config import ExportUseCase  # noqa: F401
         import qairt.gen_ai_api as qairt_genai
 
-        return hasattr(qairt_genai, "T2TExecutor") and hasattr(qairt_genai, "ExportFormatV2")
-    except ImportError:
+        if not (hasattr(qairt_genai, "T2TExecutor") and hasattr(qairt_genai, "ExportFormatV2")):
+            return False
+
+        qairt_dev_version = Version(importlib.metadata.version("qairt-dev"))
+        return qairt_dev_version >= Version("0.15.0.dev0")
+    except (ImportError, importlib.metadata.PackageNotFoundError):
         return False
 
 
